@@ -1,0 +1,69 @@
+options:
+  openstack-origin:
+    default: icehouse
+    type: string
+    description: |
+      Version of Openstack nova compute to install. Choices are:
+      - icehouse
+      - havana
+      - grizzly
+  nova-config:
+    default: C:\Program Files (x86)\Cloudbase Solutions\Openstack\Nova\etc\nova.conf
+    type: string
+    description: Full path to nova.conf
+  neutron-config:
+    default: C:\Program Files (x86)\Cloudbase Solutions\Openstack\Nova\etc\neutron_hyperv_agent.conf
+    type: string
+    description: Full path to neutron_hyperv_agent.conf
+  rabbit-user:
+    default: nova
+    type: string
+    description: Username used to access rabbitmq queue
+  rabbit-vhost:
+    default: openstack
+    type: string
+    decsription: Rabbitmq vhost
+  multi-host:
+    default: "yes"
+    type: string
+    description: Whether to run nova-api and nova-network on the compute nodes.
+  enable-live-migration:
+    default: False
+    type: boolean
+    description: Configure Hyper-V for live migration.
+  migration-auth-type:
+    default: CredSSP
+    type: string
+    description: |
+      TCP authentication scheme for Hyper-V live migration.  Available options
+      include CredSSP or Kerberos.
+  data-interface:
+    type: string
+    description: |
+      Ethernet inerface to use for vmswitch. This can be a MAC address or an interface name.
+      This option is mandatory if more then one interface is present on the target system.
+      In cases where there is only one interface on the system, the vmswitch will be created using that
+      interface and OSManagement will be set to True, regardless of the vmswitch-management option.
+      Avoid using the management interface as a data interface where system has more then one NIC.
+  vmswitch-name:
+    default: br100
+    type: string
+    description: Virtual switch to use
+  vmswitch-management:
+    default: False
+    type: boolean
+    description: |
+      Allow management OS on this vm switch. If True, the switch will be set in DHCP mode.
+  log-dir:
+    default: C:\OpenStack\Log
+    type: string
+    description: |
+      Log folder location
+  instances-dir:
+    default: C:\OpenStack\Instances
+    type: string
+    decription: |
+      Location in which to store VM disks
+  config-flags:
+    type: string
+    description: Comma separated list of key=value config flags to be set in nova.conf.
