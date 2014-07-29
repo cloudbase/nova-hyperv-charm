@@ -8,8 +8,8 @@ description: |
 categories:
   - openstack
 provides:
-  nova-hyperv:
-    interface: nova-hyperv
+  cloud-compute:
+    interface: nova-compute
 requires:
   amqp:
     interface: rabbitmq
@@ -18,8 +18,6 @@ requires:
   nova-ceilometer:
     interface: nova-ceilometer
     scope: container
-  quantum-network-service:
-    interface: quantum
 peers:
   compute-peer:
     interface: nova

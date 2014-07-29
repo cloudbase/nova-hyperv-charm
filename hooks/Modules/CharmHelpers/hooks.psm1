@@ -62,6 +62,7 @@ function Check-ContextComplete {
     )
     foreach ($i in $ctx.GetEnumerator()){
         if (!$i.Value){
+            juju-log.exe $i.Name + " is empty"
             return $false
         }
     }

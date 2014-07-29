@@ -37,7 +37,7 @@ options:
     description: |
       TCP authentication scheme for Hyper-V live migration.  Available options
       include CredSSP or Kerberos.
-  data-interface:
+  data-port:
     type: string
     description: |
       Ethernet inerface to use for vmswitch. This can be a MAC address or an interface name.

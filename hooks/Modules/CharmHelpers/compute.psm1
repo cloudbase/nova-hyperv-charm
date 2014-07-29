@@ -73,6 +73,22 @@ function Get-RabbitMQContext {
     return @{}
 }
 
+function Get-NeutronUrl {
+    Param (
+        [Parameter(Mandatory=$true)]
+        [string]$rid,
+        [Parameter(Mandatory=$true)]
+        [string]$unit
+    )
+
+    $url = relation_get -attr 'neutron_url' -rid $rid -unit $unit
+    if ($url){
+        return $url
+    }
+    $url = relation_get -attr 'quantum_url' -rid $rid -unit $unit
+    return $url
+}
+
 function Get-NeutronContext {
     juju-log.exe "Generating context for Neutron"
 
@@ -102,11 +118,11 @@ function Get-NeutronContext {
         "instances_dir"=$instancesDir
     }
 
-    $rids = relation_ids -reltype 'nova-hyperv'
+    $rids = relation_ids -reltype 'cloud-compute'
     foreach ($rid in $rids){
         $units = related_units -relid $rid
         foreach ($unit in $units){
-            $url = relation_get -attr 'neutron_url' -rid $rid -unit $unit
+            $url = Get-NeutronUrl -rid $rid -unit $unit
             if (!$url){
                 continue
             }
@@ -180,7 +196,7 @@ function Generate-Config {
         juju-log.exe "Got $context context $ctx"
         if ($ctx.Count -eq 0){
             # Context is empty. Probably peer not ready
-            juju-log.exe "Context for $context is EMPTY!!!!"
+            juju-log.exe "Context for $context is EMPTY"
             $should_restart = $false
             continue
         }
@@ -194,6 +210,58 @@ function Generate-Config {
     Set-Content $service["config"] $config
     # Restart-Service $service["service"]
     return $should_restart
+}
+
+function Get-InterfaceFromConfig {
+    $nic = $null
+    $DataInterfaceFromConfig = charm_config -scope "data-port"
+    if ($DataInterfaceFromConfig -eq $false){
+        return $null
+    }
+    foreach ($i in $DataInterfaceFromConfig.Split()){
+        $nic = Get-NetAdapter -Physical | Where-Object { $_.MacAddress -match $i.Replace(':', '-') }
+        if ($nic) {
+            return $nic
+        }
+    }
+    return $nic
+}
+
+function Juju-ConfigureVMSwitch {
+    $VMswitchName = Juju-GetVMSwitch
+    $isConfigured = Get-VMSwitch -SwitchType External -Name $VMswitchName
+    if ($isConfigured){
+        return $true
+    }
+    $VMswitches = Get-VMSwitch -SwitchType External
+    if ($VMswitches.Count -gt 0){
+        Rename-VMSwitch $VMswitches[0] -NewName $VMswitchName
+        return $true
+    }
+
+    $interfaces = Get-NetAdapter -Physical
+
+    if ($interfaces.GetType().BaseType -ne [System.Array]){
+        # we have ony one ethernet adapter. Going to use it for
+        # vmswitch
+        New-VMSwitch -Name $VMswitchName -NetAdapterName $interfaces.Name -AllowManagementOS $true
+        if ($? -eq $false){
+            Juju-Error "Failed to create vmswitch"
+        }
+    }else{
+        juju-log.exe "Trying to fetch data port from config"
+        $nic = Get-InterfaceFromConfig
+        if (!$nic) {
+            juju-log.exe "Data port not found. Not configuring switch"
+            return $true
+        }
+        New-VMSwitch -Name $VMswitchName -NetAdapterName $nic.Name -AllowManagementOS $false
+        if ($? -eq $false){
+            Juju-Error "Failed to create vmswitch"
+        }
+        return $true
+    }
+    return $true
 }
 
 Export-ModuleMember -Function * -Variable JujuCharmServices
