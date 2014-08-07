@@ -6,7 +6,6 @@ options:
       Version of Openstack nova compute to install. Choices are:
       - icehouse
       - havana
-      - grizzly
   nova-config:
     default: C:\Program Files (x86)\Cloudbase Solutions\Openstack\Nova\etc\nova.conf
     type: string
@@ -36,7 +35,7 @@ options:
     type: string
     description: |
       TCP authentication scheme for Hyper-V live migration.  Available options
-      include CredSSP or Kerberos.
+      include CredSSP or Kerberos. (Not yet implemented)
   data-port:
     type: string
     description: |
