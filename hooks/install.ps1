@@ -1,3 +1,7 @@
+#
+# Copyright 2014 Cloudbase Solutions SRL
+#
+
 Import-Module -DisableNameChecking CharmHelpers
 
 # we want to exit on error

@@ -1,3 +1,7 @@
+#
+# Copyright 2014 Cloudbase Solutions SRL
+#
+
 Import-Module -DisableNameChecking CharmHelpers
 
 $rabbitUser = charm_config -scope 'rabbit-user'

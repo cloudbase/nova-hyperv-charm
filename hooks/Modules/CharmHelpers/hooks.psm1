@@ -1,3 +1,7 @@
+#
+# Copyright 2014 Cloudbase Solutions SRL
+#
+
 function ExecRetry($command, $maxRetryCount = 10, $retryInterval=2)
 {
     $currErrorActionPreference = $ErrorActionPreference

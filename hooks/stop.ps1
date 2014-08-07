@@ -1,3 +1,7 @@
+#
+# Copyright 2014 Cloudbase Solutions SRL
+#
+
 # we want to exit on error
 # $ErrorActionPreference = "Stop"
 

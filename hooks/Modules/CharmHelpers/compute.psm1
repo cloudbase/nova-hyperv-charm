@@ -1,3 +1,7 @@
+#
+# Copyright 2014 Cloudbase Solutions SRL
+#
+
 Import-Module -Force -DisableNameChecking $psscriptroot\hooks.psm1
 
 function Juju-GetVMSwitch {
