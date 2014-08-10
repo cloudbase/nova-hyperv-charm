@@ -1,10 +1,10 @@
 Overview
---------
+========
 
 This charm provides Openstack Nova compute for Hyper-V.
 
 Usage
------
+======
 
 Step by step instructions on using the charm:
 
@@ -13,7 +13,7 @@ Step by step instructions on using the charm:
     juju add-relation nova-hyperv rabbitmq-server
 
 Configuration
--------------
+=============
 
 Ideally you will deploy this charm to a machine that has at least 2 network cards. If only one is present, this charm will add that interface to a vmswitch and enable management OS on the bridge itself.
 
