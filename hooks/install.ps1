@@ -2,10 +2,12 @@
 # Copyright 2014 Cloudbase Solutions SRL
 #
 
+$ErrorActionPreference = "Stop"
+
 Import-Module -DisableNameChecking CharmHelpers
 Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
 
-$ErrorActionPreference = "SilentlyContinue"
+# $ErrorActionPreference = "Stop"
 
 $distro_urls = @{
     'icehouse' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Icehouse_2014_1.msi';
@@ -40,11 +42,14 @@ function Juju-NovaInstall {
         [Parameter(Mandatory=$true)]
         [string]$InstallerPath
     )
+    Juju-Log "Running install"
     $hasInstaller = Test-Path $InstallerPath
     if($hasInstaller -eq $false){
         $InstallerPath = Juju-GetInstaller
     }
-    RunCommand -Cmd @("cmd.exe", "/C", "call", "msiexec.exe", "/i", $InstallerPath, "/qb", "/passive", "/l*v", "$env:APPDATA\log.txt", "SKIPNOVACONF=1")
+    Juju-Log "Installing from $InstallerPath"
+    cmd.exe /C call msiexec.exe /i $InstallerPath /qb /passive /l*v $env:APPDATA\log.txt SKIPNOVACONF=1
+
     if ($? -eq $false){
         Juju-Error "Nova failed to install"
     }

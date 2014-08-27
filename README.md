@@ -11,6 +11,7 @@ Step by step instructions on using the charm:
     juju deploy nova-hyperv
     juju add-relation nova-hyperv nova-cloud-controller
     juju add-relation nova-hyperv rabbitmq-server
+	juju add-relation nova-hyperv glance
 
 Configuration
 =============
