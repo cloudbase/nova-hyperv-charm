@@ -1,8 +1,8 @@
 #
 # Copyright 2014 Cloudbase Solutions SRL
 #
+$ErrorActionPreference = "Stop"
 
-$ErrorActionPreference = 'Stop'
 $name = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 $fullPath = Join-Path $name "Modules\CharmHelpers"
 Import-Module -Force -DisableNameChecking $fullPath
@@ -193,6 +193,7 @@ function Generate-Config {
         [Parameter(Mandatory=$true)]
         [string]$ServiceName
     )
+    $JujuCharmServices = Charm-Services
     $should_restart = $true
     $service = $JujuCharmServices[$ServiceName]
     if (!$service){
@@ -240,7 +241,11 @@ function Get-InterfaceFromConfig {
 
 function Juju-ConfigureVMSwitch {
     $VMswitchName = Juju-GetVMSwitch
-    $isConfigured = Get-VMSwitch -SwitchType External -Name $VMswitchName
+    try {
+        $isConfigured = Get-VMSwitch -SwitchType External -Name $VMswitchName
+    } catch {
+        $isConfigured = $false
+    }
     if ($isConfigured){
         return $true
     }

@@ -6,8 +6,7 @@ $moduleName = $moduleNameBasic + ".psm1"
 $moduleNamePs1 = $moduleNameBasic + ".ps1"
 $modulePath = Join-Path $moduleBasePath $moduleName
 $moduleCpy = Join-Path $env:Temp $moduleNamePs1
-echo $modulePath
-ls $moduleLoaded
+
 if ((Test-Path $modulePath) -eq $false) {
  
     write-host "path not found"
