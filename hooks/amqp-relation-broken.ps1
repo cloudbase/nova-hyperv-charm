@@ -6,6 +6,8 @@
 # $ErrorActionPreference = "Stop"
 
 Import-Module -DisableNameChecking CharmHelpers
+Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+
 
 Juju-ConfigureVMSwitch
 $nova_restart = Generate-Config -ServiceName "nova"

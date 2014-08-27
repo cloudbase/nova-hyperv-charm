@@ -2,7 +2,7 @@
 # Copyright 2014 Cloudbase Solutions SRL
 #
 
-Import-Module -Force -DisableNameChecking $psscriptroot\hooks.psm1
+Import-Module -DisableNameChecking CharmHelpers
 
 function Juju-GetVMSwitch {
     $VMswitchName = charm_config -scope "vmswitch-name"

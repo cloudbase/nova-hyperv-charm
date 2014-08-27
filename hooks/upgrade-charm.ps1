@@ -3,17 +3,18 @@
 #
 
 Import-Module -DisableNameChecking CharmHelpers
+Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
 
-$rabbitUser = charm_config -scope 'rabbit-user'
-$rabbitVhost = charm_config -scope 'rabbit-vhost'
+Juju-ConfigureVMSwitch
+$nova_restart = Generate-Config -ServiceName "nova"
+$neutron_restart = Generate-Config -ServiceName "neutron"
 
-$relation_set = @{
-    'username'=$rabbitUser;
-    'vhost'=$rabbitVhost
+if ($nova_restart){
+    juju-log.exe "Restarting service Nova"
+    Restart-Service $JujuCharmServices["nova"]["service"]
 }
 
-$rids = relation_ids -reltype "amqp"
-
-foreach ($rid in $rids){
-    $ret = relation_set -relation_id $rid -relation_settings $relation_set
+if ($neutron_restart){
+    juju-log.exe "Restarting service Nova"
+    Restart-Service $JujuCharmServices["neutron"]["service"]
 }

@@ -3,8 +3,8 @@
 #
 
 Import-Module -DisableNameChecking CharmHelpers
+Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
 
-# we want to exit on error
 $ErrorActionPreference = "SilentlyContinue"
 
 $distro_urls = @{
@@ -44,7 +44,7 @@ function Juju-NovaInstall {
     if($hasInstaller -eq $false){
         $InstallerPath = Juju-GetInstaller
     }
-    cmd.exe /C call msiexec.exe /i $InstallerPath /qb /passive /l*v "$env:APPDATA\log.txt" SKIPNOVACONF=1
+    RunCommand -Cmd @("cmd.exe", "/C", "call", "msiexec.exe", "/i", $InstallerPath, "/qb", "/passive", "/l*v", "$env:APPDATA\log.txt", "SKIPNOVACONF=1")
     if ($? -eq $false){
         Juju-Error "Nova failed to install"
     }
