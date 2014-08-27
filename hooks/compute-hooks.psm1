@@ -2,7 +2,11 @@
 # Copyright 2014 Cloudbase Solutions SRL
 #
 
-Import-Module -DisableNameChecking CharmHelpers
+$ErrorActionPreference = 'Stop'
+$name = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
+$fullPath = Join-Path $name "Modules\CharmHelpers"
+Import-Module -Force -DisableNameChecking $fullPath
+
 
 function Juju-GetVMSwitch {
     $VMswitchName = charm_config -scope "vmswitch-name"
@@ -13,37 +17,40 @@ function Juju-GetVMSwitch {
 }
 
 
-$template_dir = "$env:CHARM_DIR"
-$distro = charm_config -scope "openstack-origin"
-$nova_config = charm_config -scope "nova-config"
-$neutron_config = charm_config -scope "neutron-config"
+function Charm-Services {
+    $template_dir = "$env:CHARM_DIR"
+    $distro = charm_config -scope "openstack-origin"
+    $nova_config = charm_config -scope "nova-config"
+    $neutron_config = charm_config -scope "neutron-config"
 
-$JujuCharmServices = @{
-    "nova"=@{
-        "template"="$template_dir\templates\$distro\nova.conf";
-        "service"="nova-compute";
-        "config"="$nova_config";
-        "context_generators"=@(
-            "Get-RabbitMQContext",
-            "Get-NeutronContext",
-            "Get-GlanceContext",
-            "Get-CharmConfigContext"
-            );
-    };
-    "neutron"=@{
-        "template"="$template_dir\templates\$distro\neutron_hyperv_agent.conf"
-        "service"="neutron-hyperv-agent";
-        "config"="$neutron_config";
-        "context_generators"=@(
-            "Get-RabbitMQContext",
-            "Get-NeutronContext",
-            "Get-CharmConfigContext"
-            );
+    $JujuCharmServices = @{
+        "nova"=@{
+            "template"="$template_dir\templates\$distro\nova.conf";
+            "service"="nova-compute";
+            "config"="$nova_config";
+            "context_generators"=@(
+                "Get-RabbitMQContext",
+                "Get-NeutronContext",
+                "Get-GlanceContext",
+                "Get-CharmConfigContext"
+                );
+        };
+        "neutron"=@{
+            "template"="$template_dir\templates\$distro\neutron_hyperv_agent.conf"
+            "service"="neutron-hyperv-agent";
+            "config"="$neutron_config";
+            "context_generators"=@(
+                "Get-RabbitMQContext",
+                "Get-NeutronContext",
+                "Get-CharmConfigContext"
+                );
+        }
     }
+    return $JujuCharmServices
 }
 
 function Get-RabbitMQContext {
-    juju-log.exe "Generating context for RabbitMQ"
+    Juju-Log "Generating context for RabbitMQ"
     $username = charm_config -scope 'rabbit-user'
     $vhost = charm_config -scope 'rabbit-vhost'
     if (!$username -or !$vhost){
@@ -73,7 +80,7 @@ function Get-RabbitMQContext {
     if ($ctx_complete){
         return $ctx
     }
-    juju-log.exe "RabbitMQ context not yet complete. Peer not ready?"
+    Juju-Log "RabbitMQ context not yet complete. Peer not ready?"
     return @{}
 }
 
@@ -94,7 +101,7 @@ function Get-NeutronUrl {
 }
 
 function Get-NeutronContext {
-    juju-log.exe "Generating context for Neutron"
+    Juju-Log "Generating context for Neutron"
 
     $logdir = charm_config -scope 'log-dir'
     $instancesDir = charm_config -scope 'instances-dir'
@@ -144,7 +151,7 @@ function Get-NeutronContext {
     }
     $ctx_complete = Check-ContextComplete -ctx $ctx
     if (!$ctx_complete){
-        juju-log.exe "Missing required relation settings for Neutron. Peer not ready?"
+        Juju-Log "Missing required relation settings for Neutron. Peer not ready?"
         return @{}
     }
     $ctx["neutron_admin_auth_url"] = "http://" + $ctx['keystone_host'] + ":" + $ctx['auth_port']+ "/v2.0"
@@ -152,7 +159,7 @@ function Get-NeutronContext {
 }
 
 function Get-GlanceContext {
-    juju-log.exe "Getting glance context"
+    Juju-Log "Getting glance context"
     $rids = relation_ids -reltype 'image-service'
     if(!$rids){
         return @{}
@@ -166,7 +173,7 @@ function Get-GlanceContext {
             }
         }
     }
-    juju-log.exe "Glance context not yet complete. Peer not ready?"
+    Juju-Log "Glance context not yet complete. Peer not ready?"
     return @{}
 }
 
@@ -195,12 +202,12 @@ function Generate-Config {
     $config = gc $service["template"]
     # populate config with variables from context
     foreach ($context in $service['context_generators']){
-        juju-log.exe "Getting context for $context"
+        Juju-Log "Getting context for $context"
         $ctx = & $context
-        juju-log.exe "Got $context context $ctx"
+        Juju-Log "Got $context context $ctx"
         if ($ctx.Count -eq 0){
             # Context is empty. Probably peer not ready
-            juju-log.exe "Context for $context is EMPTY"
+            Juju-Log "Context for $context is EMPTY"
             $should_restart = $false
             continue
         }
@@ -253,10 +260,10 @@ function Juju-ConfigureVMSwitch {
             Juju-Error "Failed to create vmswitch"
         }
     }else{
-        juju-log.exe "Trying to fetch data port from config"
+        Juju-Log "Trying to fetch data port from config"
         $nic = Get-InterfaceFromConfig
         if (!$nic) {
-            juju-log.exe "Data port not found. Not configuring switch"
+            Juju-Log "Data port not found. Not configuring switch"
             return $true
         }
         New-VMSwitch -Name $VMswitchName -NetAdapterName $nic.Name -AllowManagementOS $false
