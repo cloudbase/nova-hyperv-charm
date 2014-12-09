@@ -7,23 +7,26 @@ $ErrorActionPreference = "Stop"
 Import-Module -DisableNameChecking CharmHelpers
 Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
 
-# $ErrorActionPreference = "Stop"
-
 $distro_urls = @{
-    'icehouse' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Icehouse_2014_1.msi';
-    'havana'='https://www.cloudbase.it/downloads/HyperVNovaCompute_Havana_2013_2_2.msi';
-    'grizzly'='https://www.cloudbase.it/downloads/HyperVNovaCompute_Grizzly.msi'
+    'icehouse' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Icehouse_2014_1_3.msi';
+    'juno' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Juno_2014_2.msi';
 }
 
 function Juju-GetInstaller {
     $distro = charm_config -scope "openstack-origin"
+    $installer_url = charm_config -scope "installer-url"
     if ($distro -eq $false){
-        $distro = "icehouse"
+        $distro = "juno"
     }
-    if (!$distro_urls[$distro]){
-        Juju-Error "Could not find a download URL for $distro"
+    if ($installer_url - eq $false) {
+        if (!$distro_urls[$distro]){
+            Juju-Error "Could not find a download URL for $distro"
+        }
+        $url = $distro_urls[$distro]
+    }else {
+        $url = $installer_url
     }
-    $msi = $distro_urls[$distro].split('/')[-1]
+    $msi = $url.split('/')[-1]
     $download_location = "$env:TEMP\" + $msi
     $installerExists = Test-Path $download_location
 

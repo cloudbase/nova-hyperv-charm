@@ -20,8 +20,8 @@ function Juju-GetVMSwitch {
 function Charm-Services {
     $template_dir = "$env:CHARM_DIR"
     $distro = charm_config -scope "openstack-origin"
-    $nova_config = charm_config -scope "nova-config"
-    $neutron_config = charm_config -scope "neutron-config"
+    $nova_config = "C:\Program Files (x86)\Cloudbase Solutions\Openstack\Nova\etc\nova.conf"
+    $neutron_config = "C:\Program Files (x86)\Cloudbase Solutions\Openstack\Nova\etc\neutron_hyperv_agent.conf"
 
     $JujuCharmServices = @{
         "nova"=@{
@@ -121,6 +121,7 @@ function Get-NeutronContext {
         "neutron_url"=$null;
         "keystone_host"=$null;
         "auth_port"=$null;
+        "auth_protocol"=$null;
         "neutron_auth_strategy"="keystone";
         "neutron_admin_tenant_name"=$null;
         "neutron_admin_username"=$null;
@@ -140,6 +141,7 @@ function Get-NeutronContext {
             $ctx["neutron_url"] = $url
             $ctx["keystone_host"] = relation_get -attr 'auth_host' -rid $rid -unit $unit
             $ctx["auth_port"] = relation_get -attr 'auth_port' -rid $rid -unit $unit
+            $ctx["auth_protocol"] = relation_get -attr 'auth_protocol' -rid $rid -unit $unit
             $ctx["neutron_admin_tenant_name"] = relation_get -attr 'service_tenant_name' -rid $rid -unit $unit
             $ctx["neutron_admin_username"] = relation_get -attr 'service_username' -rid $rid -unit $unit
             $ctx["neutron_admin_password"] = relation_get -attr 'service_password' -rid $rid -unit $unit
@@ -154,7 +156,7 @@ function Get-NeutronContext {
         Juju-Log "Missing required relation settings for Neutron. Peer not ready?"
         return @{}
     }
-    $ctx["neutron_admin_auth_url"] = "http://" + $ctx['keystone_host'] + ":" + $ctx['auth_port']+ "/v2.0"
+    $ctx["neutron_admin_auth_url"] = $ctx["auth_protocol"] + "://" + $ctx['keystone_host'] + ":" + $ctx['auth_port']+ "/v2.0"
     return $ctx
 }
 

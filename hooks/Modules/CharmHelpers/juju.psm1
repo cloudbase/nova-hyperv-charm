@@ -1,10 +1,12 @@
+$ErrorActionPreference = "Stop"
+
 $utilsModulePath = Join-Path `
                 (Split-Path $SCRIPT:MyInvocation.MyCommand.Path -Parent) `
                 "utils.psm1"
 Import-Module -Force -DisableNameChecking $utilsModulePath
 
 function Juju-Error {
-    param( 
+    param(
         [parameter(Mandatory=$true)]
         [string]$Msg,
         [bool]$Fatal=$true
@@ -12,7 +14,7 @@ function Juju-Error {
 
     juju-log.exe $Msg
     if ($Fatal) {
-        Throw $Msg
+        exit 1
     }
 }
 
@@ -200,7 +202,7 @@ function related_units {
     }
 
     if ($relationId){
-        $cmd += "-r " 
+        $cmd += "-r "
         $cmd += $relationId
     }
     $ret = RunCommand $cmd
@@ -366,7 +368,7 @@ $utilsModulePath = Join-Path `
 Import-Module -Force -DisableNameChecking $utilsModulePath
 
 function Juju-Error {
-    param( 
+    param(
         [parameter(Mandatory=$true)]
         [string]$Msg,
         [bool]$Fatal=$true
@@ -562,7 +564,7 @@ function related_units {
     }
 
     if ($relationId){
-        $cmd += "-r " 
+        $cmd += "-r "
         $cmd += $relationId
     }
     $ret = RunCommand $cmd
