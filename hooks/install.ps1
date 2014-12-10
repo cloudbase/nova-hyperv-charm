@@ -18,7 +18,7 @@ function Juju-GetInstaller {
     if ($distro -eq $false){
         $distro = "juno"
     }
-    if ($installer_url - eq $false) {
+    if ($installer_url -eq $false) {
         if (!$distro_urls[$distro]){
             Juju-Error "Could not find a download URL for $distro"
         }
