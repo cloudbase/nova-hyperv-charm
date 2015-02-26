@@ -38,10 +38,15 @@ function Check-ContextComplete {
         [Hashtable]$Ctx
     )
 
+    $is_empty = $false
     foreach ($i in $Ctx.GetEnumerator()) {
         if (!$i.Value) {
-            return $false
+            juju-log.exe "$i.Name is empty"
+            $is_empty = $true
         }
+    }
+    if ($is_empty) {
+        return $false
     }
     return $true
 }
