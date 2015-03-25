@@ -3,7 +3,20 @@
 #
 
 # we want to exit on error
-# $ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
-Start-Service nova-compute
-Start-Service neutron-hyperv-agent
+try {
+    Import-Module -DisableNameChecking CharmHelpers
+    Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+}catch{
+    juju-log.exe "Failed to import modules: $_.Exception.Message"
+    exit 1
+}
+
+try {
+    Restart-Nova
+    Restart-Neutron
+} catch {
+    juju-log.exe "Failed to start services: $_.Exception.Message"
+    exit 1
+}

@@ -17,7 +17,10 @@ requires:
     interface: glance
   nova-ceilometer:
     interface: nova-ceilometer
-    scope: container
+  ad-join:
+    interface: ad-join
 peers:
   compute-peer:
     interface: nova
+  hyperv-peer:
+    interface: hyperv-peer

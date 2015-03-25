@@ -1,3 +1,22 @@
+#ps1_sysnative
+
+# Copyright 2014 Cloudbase Solutions Srl
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+$utilsModulePath = Join-Path $PSScriptRoot "utils.psm1"
+Import-Module -Force -DisableNameChecking $utilsModulePath
+
 $SourcePolicy = @"
 /*
 Original sources available at: https://bitbucket.org/splatteredbits/carbon
@@ -288,7 +307,6 @@ namespace PSCarbon
     }
 }
 "@
-
 Add-Type -TypeDefinition $SourcePolicy -Language CSharp
 
 $ServiceChangeErrors = @{}
@@ -592,7 +610,6 @@ namespace PSCloudbase
 "@
 Add-Type -TypeDefinition $Source -Language CSharp
 
-
 $Source = @"
 using System;
 using System.Text;
@@ -631,7 +648,7 @@ function Start-ProcessAsUser
 {
     [CmdletBinding()]
     Param
-      (
+    (
         [parameter(Mandatory=$true, ValueFromPipeline=$true)]
         [String]
         $Command,
@@ -644,7 +661,8 @@ function Start-ProcessAsUser
         [parameter()]
         [bool]
         $LoadUserProfile = $true
-      )
+    )
+
     Process
     {
         $nc = $Credential.GetNetworkCredential()
@@ -654,48 +672,48 @@ function Start-ProcessAsUser
             $domain = $nc.Domain
         }
         return [PSCloudbase.ProcessManager]::RunProcess($nc.UserName,
-                                                       $nc.Password,
-                                                       $domain, $Command,
-                                                       $Arguments,
-                                                       $LoadUserProfile)
+                                                        $nc.Password,
+                                                        $domain, $Command,
+                                                        $Arguments,
+                                                        $LoadUserProfile)
     }
 }
 
-function SetUserRunAsRights {
-     Param
-       (
+function Set-UserRunAsRights {
+    Param
+    (
         [Parameter(Mandatory=$true)]
         [String]
-        $userName
-      )
+        $UserName
+    )
 
-    $privileges =@()
-    $privileges+= "SeServiceLogonRight"
-    $privileges+= "SeTakeOwnershipPrivilege"
-    $privileges+= "SeSyncAgentPrivilege"
-    $privileges+= "SeSecurityPrivilege"
-    $privileges+= "SeAssignPrimaryTokenPrivilege"
-    $privileges+= "SeRestorePrivilege"
-    $privileges+= "SeShutdownPrivilege"
-    $privileges+= "SeMachineAccountPrivilege"
-    $privileges+= "SeTcbPrivilege"
-    $privileges+= "SeInteractiveLogonRight"
-    $privileges+= "SeBatchLogonRight"
-    $privileges+= "SeNetworkLogonRight"
-    $privileges+= "SeBatchLogonRight"
-    $privileges+= "SeBackupPrivilege"
-    $privileges+= "SeCreateTokenPrivilege"
-    $privileges+= "SeCreatePermanentPrivilege"
-    $privileges+= "SeCreatePagefilePrivilege"
-    $privileges+= "SeSystemEnvironmentPrivilege"
-    $privileges+= "SeProfileSingleProcessPrivilege"
-    $privileges+= "SeCreateSymbolicLinkPrivilege"
+    $privileges = @()
+    $privileges += "SeServiceLogonRight"
+    $privileges += "SeTakeOwnershipPrivilege"
+    $privileges += "SeSyncAgentPrivilege"
+    $privileges += "SeSecurityPrivilege"
+    $privileges += "SeAssignPrimaryTokenPrivilege"
+    $privileges += "SeRestorePrivilege"
+    $privileges += "SeShutdownPrivilege"
+    $privileges += "SeMachineAccountPrivilege"
+    $privileges += "SeTcbPrivilege"
+    $privileges += "SeInteractiveLogonRight"
+    $privileges += "SeBatchLogonRight"
+    $privileges += "SeNetworkLogonRight"
+    $privileges += "SeBatchLogonRight"
+    $privileges += "SeBackupPrivilege"
+    $privileges += "SeCreateTokenPrivilege"
+    $privileges += "SeCreatePermanentPrivilege"
+    $privileges += "SeCreatePagefilePrivilege"
+    $privileges += "SeSystemEnvironmentPrivilege"
+    $privileges += "SeProfileSingleProcessPrivilege"
+    $privileges += "SeCreateSymbolicLinkPrivilege"
 
     $allPrivillegesCount = $privileges.Count
     $allPrivillegesInstalled = 0
     foreach ($privilege in $privileges) {
-        if (![PSCarbon.Lsa]::GetPrivileges($userName).Contains($privilege)) {
-            [PSCarbon.Lsa]::GrantPrivileges($userName, $privilege)
+        if (![PSCarbon.Lsa]::GetPrivileges($UserName).Contains($privilege)) {
+            [PSCarbon.Lsa]::GrantPrivileges($UserName, $privilege)
         } else {
             $allPrivillegesInstalled = $allPrivillegesInstalled + 1
         }
@@ -714,11 +732,12 @@ function Get-RandomPassword
         [int]
         $Length
     )
+
     process
     {
         $hProvider = 0
         try {
-            if(![PSCloudbase.Win32CryptApi]::CryptAcquireContext(
+            if (![PSCloudbase.Win32CryptApi]::CryptAcquireContext(
                 [ref]$hProvider, $null, $null,
                 [PSCloudbase.Win32CryptApi]::PROV_RSA_FULL,
                 ([PSCloudbase.Win32CryptApi]::CRYPT_VERIFYCONTEXT -bor
@@ -746,9 +765,10 @@ function Get-RandomPassword
     }
 }
 
-function Generate-Strong-Password {
+function Generate-StrongPassword {
     $password = (Get-RandomPassword 15) + "^"
-    return $password 
+    return $password
 }
+
 
 Export-ModuleMember -Function *
