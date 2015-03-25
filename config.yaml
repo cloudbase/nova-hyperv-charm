@@ -19,20 +19,6 @@ options:
     default: openstack
     type: string
     decsription: Rabbitmq vhost
-  multi-host:
-    default: "yes"
-    type: string
-    description: Whether to run nova-api and nova-network on the compute nodes.
-  enable-live-migration:
-    default: False
-    type: boolean
-    description: Configure Hyper-V for live migration.
-  migration-auth-type:
-    default: CredSSP
-    type: string
-    description: |
-      TCP authentication scheme for Hyper-V live migration.  Available options
-      include CredSSP or Kerberos. (Not yet implemented)
   data-port:
     type: string
     description: |
@@ -41,6 +27,13 @@ options:
       In cases where there is only one interface on the system, the vmswitch will be created using that
       interface and OSManagement will be set to True, regardless of the vmswitch-management option.
       Avoid using the management interface as a data interface where system has more then one NIC.
+      If you would like to use bonding, make sure you supply valid MAC addresses in the bond-ports
+      config field, and use "bond0" as a data-port name.
+  bond-ports:
+    type: string
+    description: |
+      MAC addresses of ports participating in bond link. A new Net-LbfoTeam called bond0 will be created
+      in LACP mode. This interface can be used as a data-port.
   vmswitch-name:
     default: br100
     type: string
@@ -60,3 +53,8 @@ options:
     type: string
     decription: |
       Location in which to store VM disks
+  install-local-packages:
+    default: False
+    type: boolean
+    description: |
+      This is a hack. It tells the charm to install nova and neutron from local tar archive

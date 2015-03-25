@@ -2,20 +2,20 @@
 # Copyright 2014 Cloudbase Solutions SRL
 #
 
-Import-Module -DisableNameChecking CharmHelpers
-Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+# we want to exit on error
+$ErrorActionPreference = "Stop"
 
-Juju-ConfigureVMSwitch
-$nova_restart = Generate-Config -ServiceName "nova"
-$neutron_restart = Generate-Config -ServiceName "neutron"
-$JujuCharmServices = Charm-Services
-
-if ($nova_restart){
-    juju-log.exe "Restarting service Nova"
-    Restart-Service $JujuCharmServices["nova"]["service"]
+try {
+    Import-Module -DisableNameChecking CharmHelpers
+    Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+}catch{
+    juju-log.exe "Failed to import modules: $_.Exception.Message"
+    exit 1
 }
 
-if ($neutron_restart){
-    juju-log.exe "Restarting service Nova"
-    Restart-Service $JujuCharmServices["neutron"]["service"]
+try {
+    Run-ConfigChanged
+} catch {
+    juju-log.exe "Failed to run upgrade-charm: $_.Exception.Message"
+    exit 1
 }
