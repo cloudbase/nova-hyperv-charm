@@ -53,8 +53,3 @@ options:
     type: string
     decription: |
       Location in which to store VM disks
-  install-local-packages:
-    default: False
-    type: boolean
-    description: |
-      This is a hack. It tells the charm to install nova and neutron from local tar archive
