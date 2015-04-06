@@ -8,6 +8,7 @@ options:
       - juno
   installer-url:
     type: string
+    default: ""
     description: |
       overwrite default installer location. Take care to set correct openstack-origin
       as that will be used by the charm to pick the correct config templates.
@@ -18,9 +19,10 @@ options:
   rabbit-vhost:
     default: openstack
     type: string
-    decsription: Rabbitmq vhost
+    description: Rabbitmq vhost
   data-port:
     type: string
+    default: ""
     description: |
       Ethernet inerface to use for vmswitch. This can be a MAC address or an interface name.
       This option is mandatory if more then one interface is present on the target system.
@@ -31,6 +33,7 @@ options:
       config field, and use "bond0" as a data-port name.
   bond-ports:
     type: string
+    default: ""
     description: |
       MAC addresses of ports participating in bond link. A new Net-LbfoTeam called bond0 will be created
       in LACP mode. This interface can be used as a data-port.
@@ -51,5 +54,5 @@ options:
   instances-dir:
     default: C:\OpenStack\Instances
     type: string
-    decription: |
+    description: |
       Location in which to store VM disks
