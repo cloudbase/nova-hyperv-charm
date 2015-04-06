@@ -9,7 +9,7 @@ Charm usage
     juju deploy nova-hyperv
     juju add-relation nova-hyperv nova-cloud-controller
     juju add-relation nova-hyperv rabbitmq-server
-	juju add-relation nova-hyperv glance
+    juju add-relation nova-hyperv glance
 
 Charm config
 ============
