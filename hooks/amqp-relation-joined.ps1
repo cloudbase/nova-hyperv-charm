@@ -25,6 +25,6 @@ try {
         }
     }
 }catch{
-    juju-log.exe "Failed to run amqp-relation-joined: $_.Exception.Message"
+    juju-log.exe "Failed to run amqp-relation-joined: $_"
     exit 1
 }

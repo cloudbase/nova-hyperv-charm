@@ -4,8 +4,13 @@
 
 $ErrorActionPreference = "Stop"
 
-Import-Module -DisableNameChecking CharmHelpers
-Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+try {
+    Import-Module -DisableNameChecking CharmHelpers
+    Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
+}catch {
+    juju-log.exe "Failed to run install: $_"
+    exit 1
+}
 
 function Juju-RunInstall {
     Import-CloudbaseCert
@@ -18,6 +23,6 @@ function Juju-RunInstall {
 try{
     Juju-RunInstall
 }catch{
-    juju-log.exe "Failed to run install: $_.Exception"
+    juju-log.exe "Failed to run install: $_"
     exit 1
 }

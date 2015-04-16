@@ -3,9 +3,7 @@
 #
 $ErrorActionPreference = "Stop"
 
-$name = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
-$fullPath = Join-Path $name "Modules\CharmHelpers"
-Import-Module -Force -DisableNameChecking $fullPath
+Import-Module -Force -DisableNameChecking CharmHelpers
 
 $lbfoBug = "$env:SystemDrive\lbfo-bug-workaround"
 $ovs_vsctl = "${env:ProgramFiles(x86)}\Cloudbase Solutions\Open vSwitch\bin\ovs-vsctl.exe"
