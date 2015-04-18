@@ -312,7 +312,7 @@ function Get-InterfaceFromConfig {
     $nic = $null
     $DataInterfaceFromConfig = charm_config -scope $ConfigOption
     Juju-Log "Looking for $DataInterfaceFromConfig"
-    if ($DataInterfaceFromConfig -eq $null){
+    if ($DataInterfaceFromConfig -eq $false -or $DataInterfaceFromConfig -eq ""){
         return $null
     }
     $byMac = @()
@@ -456,10 +456,10 @@ function Download-File {
 function Get-NovaInstaller {
     $distro = charm_config -scope "openstack-origin"
     $installer_url = charm_config -scope "installer-url"
-    if ($distro -eq $false){
+    if ($distroi -eq $false){
         $distro = "juno"
     }
-    if ($installer_url -eq $false) {
+    if ($installer_url -eq $false -or $installer_url -eq "") {
         if (!$distro_urls[$distro]){
             Write-JujuError "Could not find a download URL for $distro"
         }
