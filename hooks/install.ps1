@@ -13,14 +13,20 @@ try {
 }
 
 function Juju-RunInstall {
-    Import-CloudbaseCert
+    juju-log.exe "Prerequisites"
+    Install-Prerequisites
+    juju-log.exe "Cloudbase certificate"
+    Import-CloudbaseCert -NoRestart
+    juju-log.exe "Configure vmswitch"
     Juju-ConfigureVMSwitch
     $installerPath = Get-NovaInstaller
     Juju-Log "Running Nova install"
     Install-Nova -InstallerPath $installerPath
+    Configure-NeutronAgent
 }
 
 try{
+    juju-log.exe "Starting install"
     Juju-RunInstall
 }catch{
     juju-log.exe "Failed to run install: $_"

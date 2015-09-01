@@ -530,4 +530,24 @@ function unit_private_ip {
 }
 
 
+function Get-MainNetadapter {
+    $unit_ip = unit_private_ip
+    if (!$unit_ip) {
+        Throw "Failed to get unit IP"
+    }
+
+    $iface = Get-NetIPAddress | Where-Object `
+        { $_.IPAddress -match $unit_ip -and $_.AddressFamily -eq "IPv4" }
+    if ($iface) {
+        $ifaceAlias = $iface.InterfaceAlias
+        if ($ifaceAlias) {
+            return $ifaceAlias
+        } else {
+            Throw "Interface alias is null."
+        }
+    } else {
+        Throw "Failed to find primary interface."
+    }
+}
+
 Export-ModuleMember -Function *

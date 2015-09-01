@@ -1,17 +1,44 @@
 options:
   openstack-origin:
-    default: juno
+    default: kilo
     type: string
     description: |
       Version of Openstack nova compute to install. Choices are:
-      - icehouse
       - juno
+      - kilo
+  openstack-version:
+    type: string
+    description: |
+      Version of Openstack nova compute to install. This option overrides
+      openstack-origin. Choices are:
+      - juno
+      - kilo
   installer-url:
     type: string
     default: ""
     description: |
-      overwrite default installer location. Take care to set correct openstack-origin
+      overwrite default installer location. Take care to set the correct openstack-version
       as that will be used by the charm to pick the correct config templates.
+      If you use this option, you may enable file integrity checking by specifying
+      an md5sum at the end of the URL as follows:
+        https://example.com/installer.msi#md5=<hash>
+  ovs-installer-url:
+    type: string
+    default: "https://www.cloudbase.it/downloads/openvswitch-hyperv-installer-beta.msi#md5=9fdf53bb41dd398843a0ac52fe023a65"
+    description: |
+      Location of the OVS MSI installer
+  os-data-network:
+    type: string
+    description: |
+      The IP address and netmask of the OpenStack Data network (e.g.,
+      192.168.0.0/24) . This network will be used for tenant network traffic in
+      overlay networks.
+      NOTE: If ovs is selected as the network type, this option overrides
+      data-port. OVS on Windows requires that the os data network be set on the
+      vmswitch itself. That means that if an interface has an IP in the os-data-network
+      range, that interface will be added to the vmswitch. There is a caveat here.
+      If os-data-network is on a different interface then data-port, it might result
+      in the hyper-v compute nodes not being able to use VLAN network segregation.
   rabbit-user:
     default: nova
     type: string
@@ -37,6 +64,11 @@ options:
     description: |
       MAC addresses of ports participating in bond link. A new Net-LbfoTeam called bond0 will be created
       in LACP mode. This interface can be used as a data-port.
+  use-bonding:
+    type: boolean
+    default: false
+    description: |
+      Set up bonding interface
   vmswitch-name:
     default: br100
     type: string
@@ -51,6 +83,14 @@ options:
     type: string
     description: |
       Log folder location
+  network-type:
+    type: string
+    default: hyperv
+    description: |
+      Neutron agent to use. Valid options are:
+        * hyperv
+        * ovs
+      Default is hyperv. Note: ovs is available for Kilo and above
   instances-dir:
     default: C:\OpenStack\Instances
     type: string

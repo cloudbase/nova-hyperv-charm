@@ -285,5 +285,31 @@ function Delete-WindowsUser {
     } -ErrorMessage "Failed to create new user"
 }
 
+function Create-Service {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        [Parameter(Mandatory=$true)]
+        [string]$Description,
+        [Parameter(Mandatory=$false)]
+        [string]$User,
+        [Parameter(Mandatory=$false)]
+        [string]$Pass
+    )
+
+    if($user -and $Pass){
+        $secpasswd = ConvertTo-SecureString $Pass -AsPlainText -Force
+        $cred = New-Object System.Management.Automation.PSCredential ($User, $secpasswd)
+    }
+
+    if ($cred){
+        New-Service -Name $Name -BinaryPathName $Path -DisplayName $Name -Description $Description  -Credential $cred -Confirm:$false
+    }else{
+        New-Service -Name $Name -BinaryPathName $Path -DisplayName $Name -Description $Description -Confirm:$false
+    }
+
+}
 
 Export-ModuleMember -Function *
