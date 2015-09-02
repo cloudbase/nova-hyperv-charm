@@ -24,7 +24,7 @@ options:
         https://example.com/installer.msi#md5=<hash>
   ovs-installer-url:
     type: string
-    default: "https://www.cloudbase.it/downloads/openvswitch-hyperv-installer-beta.msi#md5=9fdf53bb41dd398843a0ac52fe023a65"
+    default: "https://www.cloudbase.it/downloads/openvswitch-hyperv-installer-beta.msi"
     description: |
       Location of the OVS MSI installer
   os-data-network:
