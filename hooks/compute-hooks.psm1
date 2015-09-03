@@ -175,7 +175,7 @@ function Install-RootWrap {
 
 function Charm-Services {
     $template_dir = Get-TemplatesDir
-    $distro = charm_config -scope "openstack-origin"
+    $distro = Get-OpenstackVersion
     $nova_config = "${env:programfiles(x86)}\Cloudbase Solutions\Openstack\Nova\etc\nova.conf"
     $neutron_config = "${env:programfiles(x86)}\Cloudbase Solutions\Openstack\Nova\etc\neutron_hyperv_agent.conf"
     $neutron_ml2 = "${env:programfiles(x86)}\Cloudbase Solutions\Openstack\Nova\etc\ml2_conf.ini"
