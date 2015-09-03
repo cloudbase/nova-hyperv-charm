@@ -9,6 +9,8 @@ $ErrorActionPreference = "Stop"
 Import-Module -Force -DisableNameChecking CharmHelpers
 
 $ovs_vsctl = "${env:ProgramFiles(x86)}\Cloudbase Solutions\Open vSwitch\bin\ovs-vsctl.exe"
+$env:OVS_RUNDIR = "$env:ProgramData\openvswitch"
+
 $ovsExtName = "Open vSwitch Extension"
 $distro_urls = @{
     'icehouse' = @{
