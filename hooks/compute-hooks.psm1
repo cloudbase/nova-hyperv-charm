@@ -562,10 +562,10 @@ function Get-DataPort {
     $nic = Get-InterfaceFromConfig
     if(!$nic) {
         $nic = Get-FallbackNetadapter
-        return @($nic[0], $true)
-    }else{
-        return @($nic[0], $managementOS)
+        $managementOS = $true
     }
+    $nic = Get-RealInterface $nic[0]
+    return @($nic, $managementOS)
 }
 
 function Juju-ConfigureVMSwitch {
