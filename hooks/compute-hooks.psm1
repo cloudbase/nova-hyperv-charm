@@ -52,10 +52,9 @@ function Install-Prerequisites
 
 
 function Get-OpenstackVersion {
-    $fallbackDistro = charm_config -scope "openstack-origin"
     $distro = charm_config -scope "openstack-version"
     if($distro -eq $false){
-        return $fallbackDistro
+        $distro = charm_config -scope "openstack-origin"
     }
     return $distro
 }
