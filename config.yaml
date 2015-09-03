@@ -1,13 +1,14 @@
 options:
   openstack-origin:
-    default: kilo
     type: string
+    default: kilo
     description: |
       Version of Openstack nova compute to install. Choices are:
       - juno
       - kilo
   openstack-version:
     type: string
+    default: kilo
     description: |
       Version of Openstack nova compute to install. This option overrides
       openstack-origin. Choices are:
