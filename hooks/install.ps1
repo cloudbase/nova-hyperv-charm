@@ -3,32 +3,12 @@
 #
 
 $ErrorActionPreference = "Stop"
-
-try {
-    Import-Module -DisableNameChecking CharmHelpers
-    Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
-}catch {
-    juju-log.exe "Failed to run install: $_"
-    exit 1
-}
-
-function Juju-RunInstall {
-    juju-log.exe "Prerequisites"
-    Install-Prerequisites
-    juju-log.exe "Cloudbase certificate"
-    Import-CloudbaseCert -NoRestart
-    juju-log.exe "Configure vmswitch"
-    Juju-ConfigureVMSwitch
-    $installerPath = Get-NovaInstaller
-    Juju-Log "Running Nova install"
-    Install-Nova -InstallerPath $installerPath
-    Configure-NeutronAgent
-}
+Import-Module JujuLoging
 
 try{
-    juju-log.exe "Starting install"
-    Juju-RunInstall
+    Import-Module ComputeHooks
+    Start-InstallHook
 }catch{
-    juju-log.exe "Failed to run install: $_"
+    Write-HookTracebackToLog $_
     exit 1
 }

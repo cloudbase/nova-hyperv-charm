@@ -10,6 +10,9 @@ tags:
 provides:
   cloud-compute:
     interface: nova-compute
+  s2d:
+    interface: s2d-container
+    scope: container
 requires:
   amqp:
     interface: rabbitmq

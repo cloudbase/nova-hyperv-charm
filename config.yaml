@@ -1,19 +1,21 @@
 options:
   openstack-origin:
     type: string
-    default: kilo
+    default: liberty
     description: |
       Version of Openstack nova compute to install. Choices are:
       - juno
       - kilo
+      - liberty
   openstack-version:
     type: string
-    default: kilo
+    default: liberty
     description: |
       Version of Openstack nova compute to install. This option overrides
       openstack-origin. Choices are:
       - juno
       - kilo
+      - liberty
   installer-url:
     type: string
     default: ""
@@ -65,11 +67,11 @@ options:
     description: |
       MAC addresses of ports participating in bond link. A new Net-LbfoTeam called bond0 will be created
       in LACP mode. This interface can be used as a data-port.
-  use-bonding:
-    type: boolean
-    default: false
+  bond-name:
+    type: string
+    default: bond0
     description: |
-      Set up bonding interface
+      The name of the bond interface
   vmswitch-name:
     default: br100
     type: string
@@ -80,7 +82,7 @@ options:
     description: |
       Allow management OS on this vm switch. If True, the switch will be set in DHCP mode.
   log-dir:
-    default: C:\OpenStack\Log
+    default: C:/OpenStack/Log
     type: string
     description: |
       Log folder location
@@ -93,7 +95,7 @@ options:
         * ovs
       Default is hyperv. Note: ovs is available for Kilo and above
   instances-dir:
-    default: C:\OpenStack\Instances
+    default: C:/OpenStack/Instances
     type: string
     description: |
       Location in which to store VM disks

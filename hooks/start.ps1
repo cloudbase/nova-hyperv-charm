@@ -4,19 +4,14 @@
 
 # we want to exit on error
 $ErrorActionPreference = "Stop"
+Import-Module JujuLoging
 
 try {
-    Import-Module -DisableNameChecking CharmHelpers
-    Import-Module -Force -DisableNameChecking "$psscriptroot\compute-hooks.psm1"
-}catch{
-    juju-log.exe "Failed to import modules: $_"
-    exit 1
-}
-
-try {
+    Import-Module ComputeHooks
+    
     Restart-Nova
     Restart-Neutron
 } catch {
-    juju-log.exe "Failed to start services: $_"
+    Write-HookTracebackToLog $_
     exit 1
 }
