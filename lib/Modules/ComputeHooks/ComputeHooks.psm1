@@ -337,17 +337,36 @@ function Get-RabbitMQContext {
         "password"=$null;
     }
 
-    $ctx = Get-JujuRelationContext -Relation "amqp" -RequiredContext $required
+    $optional = @{
+        "vhost"=$null;
+        "username"=$null;
+        "ha_queues"=$null;
+    }
+
+    $ctx = Get-JujuRelationContext -Relation "amqp" -RequiredContext $required -OptionalContext $optional
+
+    $data = @{}
 
     if($ctx.Count) {
-        $ctx["rabbit_userid"] = $username;
-        $ctx["rabbit_virtual_host"] = $vhost;
-        $ctx["rabbit_host"]=$ctx["hostname"];
-        $ctx["rabbit_password"]=$ctx["password"];
-        $ctx.Remove("hostname")
-        $ctx.Remove("password")
+        if(!$ctx["username"]) {
+            $data["rabbit_userid"] = $username
+        } else {
+            $data["rabbit_userid"] = $ctx["username"]
+        }
+        if(!$ctx["vhost"]){
+            $data["rabbit_virtual_host"] = $vhost
+        } else {
+            $data["rabbit_virtual_host"] = $ctx["vhost"]
+        }
+        if($ctx["ha_queues"]) {
+            $data["rabbit_ha_queues"] = "True"
+        } else {
+            $data["rabbit_ha_queues"] = "False"
+        }
+        $data["rabbit_host"]=$ctx["hostname"];
+        $data["rabbit_password"]=$ctx["password"];
     }
-    return $ctx
+    return $data
 }
 
 
@@ -556,10 +575,10 @@ function Generate-Config {
     $allContexts = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
 
     foreach ($context in $service['context_generators']){
-        Write-JujuInfo "Getting context for $context"
+        Write-JujuInfo ("Getting context for {0}" -f $context["relation"])
         $allContexts.Add($context["relation"])
         $ctx = & $context["generator"]
-        Write-JujuInfo "Got $context context $ctx"
+        Write-JujuInfo ("Got {0} context: {1}" -f @($context["relation"], $ctx.Keys))
         if (!$ctx.Count){
             # Context is empty. Probably peer not ready
             Write-JujuWarning "Context for $context is EMPTY"
