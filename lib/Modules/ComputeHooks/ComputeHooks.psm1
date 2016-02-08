@@ -679,7 +679,7 @@ function Get-RealInterface {
         if(!$realInterface){
             Throw "Failed to find interface attached to VMSwitch"
         }
-        return $realInterface
+        return $realInterface[0]
     }
 }
 
