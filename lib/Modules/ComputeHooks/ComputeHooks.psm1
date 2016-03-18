@@ -242,8 +242,11 @@ function Get-ServiceWrapper {
 
 function Enable-MSiSCSI {
     Write-JujuWarning "Enabling MSiSCSI"
-    Start-Service MSiSCSI
-    Set-Service MSiSCSI -StartupType Automatic
+    $svc = Get-Service MSiSCSI -ErrorAction SilentlyContinue
+    if($svc) {
+        Start-Service MSiSCSI
+        Set-Service MSiSCSI -StartupType Automatic
+    }
 }
 
 function Get-CharmServices {
