@@ -222,6 +222,30 @@ function Install-RootWrap {
     return $true
 }
 
+function Get-ServiceWrapper {
+    Param(
+        [Parameter(Mandatory=$false)]
+        [string]$Service
+    )
+    PROCESS {
+        $wrapperName = ("OpenStackService{0}.exe" -f $Service)
+        $svcPath = Join-Path $novaDir ("bin\{0}" -f $wrapperName)
+        if(!(Test-Path $svcPath)) {
+            $svcPath = Join-Path $novaDir "bin\OpenStackService.exe"
+            if(!(Test-Path $svcPath)) {
+                Throw "Failed to find service wrapper"
+            }
+        }
+        return $svcPath
+    }
+}
+
+function Enable-MSiSCSI {
+    Write-JujuWarning "Enabling MSiSCSI"
+    Start-Service MSiSCSI
+    Set-Service MSiSCSI -StartupType Automatic
+}
+
 function Get-CharmServices {
     $template_dir = Get-TemplatesDir
     $distro = Get-OpenstackVersion
@@ -231,8 +255,8 @@ function Get-CharmServices {
 
     $pythonDir = Get-PythonDir
 
-    $serviceWrapperNova = Join-Path $novaDir "bin\OpenStackServiceNova.exe"
-    $serviceWrapperNeutron = Join-Path $novaDir "bin\OpenStackServiceNeutron.exe"
+    $serviceWrapperNova = Get-ServiceWrapper -Service Nova
+    $serviceWrapperNeutron = Get-ServiceWrapper -Service Neutron
     $novaExe = Join-Path $pythonDir "Scripts\nova-compute.exe"
     $neutronHypervAgentExe = Join-Path $pythonDir "Scripts\neutron-hyperv-agent.exe"
     $neutronOpenvswitchExe = Join-Path $pythonDir "Scripts\neutron-openvswitch-agent.exe"
@@ -1190,6 +1214,7 @@ function Start-InstallHook {
         Install-Nova -InstallerPath $installerPath
         Confirm-ServicePrerequisites
         Start-ConfigureNeutronAgent
+        Enable-MSiSCSI
     }    
 }
 
