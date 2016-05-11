@@ -15,25 +15,14 @@
 function Invoke-DHCPRenew {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$false, ValueFromPipeline=$true)]
-        [Microsoft.Management.Infrastructure.CimInstance]$NetAdapter,
-        [Parameter(Mandatory=$false, ValueFromPipeline=$true)]
-        [int]$ifIndex
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Microsoft.Management.Infrastructure.CimInstance]$NetAdapter
     )
     PROCESS {
-        if($NetAdapter -and $ifIndex){
-            Throw "The -NetAdapter and -ifIndex options are mutually exclusive"
+        if($NetAdapter.CreationClassName -ne "MSFT_NetAdapter"){
+            Throw ("Invalid object class: {0}" -f $NetAdapter.CreationClassName)
         }
-        if(!$NetAdapter -and !$ifIndex) {
-            Throw "Either -NetAdapter or -ifIndex must be specified"
-        }
-        if($NetAdapter) {
-            if($NetAdapter.CreationClassName -ne "MSFT_NetAdapter"){
-                Throw ("Invalid object class: {0}" -f $NetAdapter.CreationClassName)
-            } else {
-                $ifIndex = $NetAdapter.ifIndex
-            }
-        }
+        $ifIndex = $NetAdapter.ifIndex
 
         $interface = Get-CimInstance -Class Win32_NetworkAdapterConfiguration | Where-Object {$_.InterfaceIndex -eq $ifIndex}
         if($interface.IPEnabled -eq $false) {
@@ -50,25 +39,14 @@ function Invoke-DHCPRenew {
 function Invoke-DHCPRelease {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$false, ValueFromPipeline=$true)]
-        [Microsoft.Management.Infrastructure.CimInstance]$NetAdapter,
-        [Parameter(Mandatory=$false, ValueFromPipeline=$true)]
-        [int]$ifIndex
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Microsoft.Management.Infrastructure.CimInstance]$NetAdapter
     )
     PROCESS {
-        if($NetAdapter -and $ifIndex){
-            Throw "The -NetAdapter and -ifIndex options are mutually exclusive"
+        if($NetAdapter.CreationClassName -ne "MSFT_NetAdapter"){
+            Throw ("Invalid object class: {0}" -f $NetAdapter.CreationClassName)
         }
-        if(!$NetAdapter -and !$ifIndex) {
-            Throw "Either -NetAdapter or -ifIndex must be specified"
-        }
-        if($NetAdapter) {
-            if($NetAdapter.CreationClassName -ne "MSFT_NetAdapter"){
-                Throw ("Invalid object class: {0}" -f $NetAdapter.CreationClassName)
-            } else {
-                $ifIndex = $NetAdapter.ifIndex
-            }
-        }
+        $ifIndex = $NetAdapter.ifIndex
 
         $interface = Get-CimInstance -Class Win32_NetworkAdapterConfiguration | Where-Object {$_.InterfaceIndex -eq $ifIndex}
         if($interface.IPEnabled -eq $false) {

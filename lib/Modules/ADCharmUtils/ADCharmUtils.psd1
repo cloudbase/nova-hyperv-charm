@@ -36,6 +36,4 @@ PowerShellVersion = '3.0'
 
 FunctionsToExport = '*'
 
-RequiredModules = @("JujuWindowsUtils", "JujuLoging", "JujuHooks", "JujuUtils")
-
 }
