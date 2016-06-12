@@ -53,7 +53,8 @@ FunctionsToExport = @(
     "Restart-Neutron",
     "Stop-Neutron",
     "Stop-Nova",
-    'Get-CharmServices')
+    'Get-CharmServices',
+    'Set-FreeRdpRelation')
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'

@@ -45,6 +45,7 @@ try {
         Start-WSFCRelationJoinedHook
         Start-S2DRelationChangedHook
         Start-ConfigChangedHook
+        Set-FreeRdpRelation
     }
 } catch {
     Write-HookTracebackToLog $_

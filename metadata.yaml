@@ -38,6 +38,8 @@ requires:
     interface: failover-cluster
   hgs:
     interface: hgs
+  free-rdp:
+    interface: free-rdp
 peers:
   compute-peer:
     interface: nova
