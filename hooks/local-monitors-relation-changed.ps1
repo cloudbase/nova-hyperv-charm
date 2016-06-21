@@ -5,11 +5,9 @@
 $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
-Import-Module JujuHooks
-Import-Module powershell-yaml
 
 
-function Set-LocalMonitors {
+function Set-LocalMonitorsRelation {
     $switchName = Get-JujuCharmConfig -Scope 'vmswitch-name'
     $charmServices = Get-CharmServices
     $novaService = $charmServices['nova']['service']
@@ -40,9 +38,6 @@ function Set-LocalMonitors {
                     };
                     'hyper_v_virtual_switch_packets_per_sec' = @{
                         'command' = "CheckCounter -a Counter=`"\\Hyper-V Virtual Switch($switchName)\\Packets/sec`""
-                    };
-                    'hyper_v_partitions' = @{
-                        'command' = "CheckCounter -a Counter=`"\\Hyper-V Hypervisor\\Partitions`""
                     };
                     'nova_compute_service_status' = @{
                         'command' = "check_service -a service=$novaService"
@@ -81,7 +76,11 @@ function Set-LocalMonitors {
 
 
 try {
-    Set-LocalMonitors
+    Import-Module JujuHooks
+    Import-Module HyperVNetworking
+    Import-Module powershell-yaml
+
+    Set-LocalMonitorsRelation
 } catch {
     Write-HookTracebackToLog $_
     exit 1

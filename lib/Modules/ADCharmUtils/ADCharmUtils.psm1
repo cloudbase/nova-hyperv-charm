@@ -1,6 +1,16 @@
+# Copyright 2014-2016 Cloudbase Solutions Srl
 #
-# Copyright 2016 Cloudbase Solutions Srl
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
 #
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 
 Import-Module JujuWindowsUtils
 Import-Module JujuLogging
@@ -10,6 +20,7 @@ Import-Module JujuUtils
 $computername = [System.Net.Dns]::GetHostName()
 
 $ErrorActionPreference = 'Stop'
+
 
 function Confirm-IsInDomain {
     param(
@@ -172,4 +183,37 @@ function Start-JoinDomain {
     }
     Write-JujuInfo "ad-join returned EMPTY"
     return $false
+}
+
+function Start-ADInfoRelationJoinedHook {
+    $requiredCtxt = @{
+        "address" = $null;
+        "domainName" = $null;
+        "netbiosname" = $null;
+        "adcredentials" = $null;
+        "ad-group-sid" = $null
+    }
+    $adCtxt = Get-JujuRelationContext -Relation "ad-join" -RequiredContext $requiredCtxt
+    if(!$adCtxt.Count) {
+        Write-JujuWarning "ad-join relation is not ready yet"
+        return
+    }
+
+    $creds = [array](Get-MyADCredentials -Credentials $adCtxt["adcredentials"] -Domain $adCtxt["netbiosname"])
+    $group = Get-JujuCharmConfig -Scope 'ad-computer-group'
+    $relationSettings = @{
+        'ad-computer' = ("{0}\{1}$" -f @($adCtxt['netbiosname'], $computername));
+        'ad-user' = $creds[0]["username"];
+        'ad-group' = ("{0}\{1}" -f @($adCtxt['netbiosname'], $group));
+        'ad-domain-name' = $adCtxt['domainName'];
+        'ad-ip-address' = $adCtxt['address'];
+        'ad-netbiosname' = $adCtxt['netbiosname'];
+        'ad-credentials' = $adCtxt['adcredentials'];
+        'ad-group-sid' = $adCtxt['ad-group-sid']
+    }
+
+    $rids = Get-JujuRelationIds 'ad-info'
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
 }

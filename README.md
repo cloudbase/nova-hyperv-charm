@@ -18,6 +18,6 @@ Ideally you will deploy this charm to a machine that has at least 2 network card
 
 If more then one NIC is present, you will have to specify the data-port using the charm config. When adding a new node, make sure to update the data-port field using:
 
-	juju set nova-hyperv data-port="aa:aa:aa:aa:aa:aa aa:aa:aa:aa:aa:ab"
+    juju set nova-hyperv data-port="aa:aa:aa:aa:aa:aa aa:aa:aa:aa:aa:ab"
 
 where aa:aa:aa:aa:aa:ab is the second machine.

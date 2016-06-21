@@ -1,13 +1,15 @@
 #
 # Copyright 2016 Cloudbase Solutions Srl
 #
-Param (
+Param(
     [Parameter(Mandatory=$true)]
     [string]$Hook
 )
 
 $ErrorActionPreference = "Stop"
+
 Import-Module JujuLogging
+
 
 try {
     Import-Module ADCharmUtils

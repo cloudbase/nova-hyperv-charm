@@ -13,6 +13,7 @@
 #    under the License.
 
 Import-Module JujuLogging
+Import-Module Templating
 
 function Convert-FileToBase64{
     <#
@@ -154,7 +155,12 @@ function Get-UserPath {
     Returns the $env:PATH variable for the current user.
     #>
     PROCESS {
-        return [System.Environment]::GetEnvironmentVariable("PATH", "User")
+        $userEnvKey = 'Registry::HKEY_CURRENT_USER\Environment'
+        $userPathVar = Get-ItemProperty -Path $userEnvKey -Name PATH -ErrorAction SilentlyContinue
+        if (!$userPathVar) {
+            return $null
+        }
+        return $userPathVar.Path
     }
 }
 
@@ -164,7 +170,9 @@ function Get-SystemPath {
     Returns the system wide default $env:PATH.
     #>
     PROCESS {
-        return [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+        $systemEnvRegKey = 'Registry::HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\Environment'
+        $systemPath = (Get-ItemProperty -Path $systemEnvRegKey -Name PATH).Path
+        return $systemPath
     }
 }
 
@@ -410,7 +418,10 @@ function Add-ToSystemPath {
             return
         }
         $newPath = $currentPath + ";" + $Path
-        [Environment]::SetEnvironmentVariable("PATH", $newPath, "Machine")
+        Start-ExternalCommand -Command {
+            setx /M PATH $newPath
+        } -ErrorMessage "Failed to set system path"
+        $env:PATH += ";$Path"
     }
 }
 
@@ -536,6 +547,27 @@ function Get-PSStringParamsFromHashtable {
         }
 
         return $args -join " "
+    }
+}
+
+function Start-RenderTemplate {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [System.Collections.Generic.Dictionary[string, object]]$Context,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [string]$TemplateName,
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [string]$OutFile
+    )
+    PROCESS {
+        $templatesDir = Join-Path $env:CHARM_DIR "templates"
+        if($env:CHARM_TEMPLATE_DIR) {
+            $templatesDir = $env:CHARM_TEMPLATE_DIR
+        }
+        $template = Join-Path $templatesDir $TemplateName
+        $cfg = Invoke-RenderTemplateFromFile -Context $Context -Template $template
+        Set-Content $OutFile $cfg
     }
 }
 

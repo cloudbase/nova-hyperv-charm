@@ -5,8 +5,6 @@
 $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
-Import-Module JujuUtils
-Import-Module JujuHooks
 
 $COMPUTERNAME = [System.Net.Dns]::GetHostName()
 
@@ -24,6 +22,8 @@ function Get-AdUserAndGroup {
 
 try {
     Import-Module ADCharmUtils
+    Import-Module JujuUtils
+    Import-Module JujuHooks
 
     $group = Get-JujuCharmConfig -Scope 'ad-computer-group'
     $encGr = ConvertTo-Base64 ("CN={0},OU=OpenStack" -f @($group))

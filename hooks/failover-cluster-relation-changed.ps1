@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
 
+
 try {
     Import-Module ComputeHooks
     Import-Module S2DCharmUtils

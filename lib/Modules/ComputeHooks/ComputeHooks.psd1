@@ -45,14 +45,6 @@ Description = 'Nova Hyper-V compute hooks'
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '3.0'
 
-# Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(
-    "JujuHelper",
-    "JujuHooks",
-    "JujuUtils",
-    "JujuWindowsUtils",
-    "Networking")
-
 # Functions to export from this module
 FunctionsToExport = @(
     "Start-ConfigChangedHook",
@@ -61,11 +53,7 @@ FunctionsToExport = @(
     "Restart-Neutron",
     "Stop-Neutron",
     "Stop-Nova",
-    "Start-WSFCRelationJoinedHook",
-    'Start-ADJoinRelationChangedHook',
-    'Start-ADInfoRelationJoinedHook',
-    'Get-CharmServices',
-    'Get-NetType')
+    'Get-CharmServices')
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'

@@ -9,21 +9,21 @@ options:
     description: "Enable verbose logging"
   openstack-origin:
     type: string
-    default: liberty
+    default: mitaka
     description: |
-      Version of Openstack nova compute to install. Choices are:
-      - juno
+      [DEPRECATED] Version of Openstack nova compute to install. Choices are:
       - kilo
       - liberty
+      - mitaka
   openstack-version:
     type: string
-    default: liberty
+    default: mitaka
     description: |
       Version of Openstack nova compute to install. This option overrides
       openstack-origin. Choices are:
-      - juno
       - kilo
       - liberty
+      - mitaka
   ad-computer-group:
     type: string
     default: "Nova"
@@ -50,7 +50,7 @@ options:
       NOTE: Available only in releases >= Mitaka
   ovs-installer-url:
     type: string
-    default: "https://www.cloudbase.it/downloads/openvswitch-hyperv-installer-beta.msi"
+    default: "https://www.cloudbase.it/downloads/openvswitch-hyperv-2.5.0.msi#md5=f7866c9b8492caeb136f248de9a57542"
     description: |
       Location of the OVS MSI installer
   os-data-network:
@@ -127,3 +127,13 @@ options:
     description: |
       Yaml with the additional checks to be set on 'local-monitors' relation
       with NSClient++
+  change-hostname:
+    default: False
+    type: boolean
+    description: |
+      On some providers such as OpenStack the name of every machine spawned
+      by Juju has a long prefix. Windows hostname will be the name of the
+      juju machine and since Windows has a 15 characters hostname limit,
+      Juju truncates it and every Windows will end up with the same hostname.
+      Enabling this option will change the hostname to a unique string formed
+      from unit name and unit number.

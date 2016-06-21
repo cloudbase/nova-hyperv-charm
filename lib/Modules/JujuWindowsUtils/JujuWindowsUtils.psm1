@@ -331,7 +331,7 @@ function Expand-ZipArchive {
         try {
             # This will work on PowerShell >= 5.0 (default on Windows 10/Windows Server 2016).
             Expand-Archive -Path $normZipPath -DestinationPath $Destination
-        } catch [System.Management.Automation.CommandNotFoundException] {
+        } catch [System.Management.Automation.ItemNotFoundException], [System.Management.Automation.CommandNotFoundException] {
             try {
                 # Try without loading system.io.compression.filesystem. This will work by default on Nano
                 [System.IO.Compression.ZipFile]::ExtractToDirectory($normZipPath, $Destination)
@@ -576,12 +576,17 @@ function Confirm-IsMemberOfGroup {
     PROCESS {
         $inDomain = (Get-ManagementObject -Class Win32_ComputerSystem).PartOfDomain
         if($inDomain){
+            if(Get-IsNanoServer) {
+                return (Get-UserGroupMembership -Username $Username -GroupSID $GroupSID)
+            }
+            # NOTE(ibalutoiu): Skip this code on Nano until the bug with Win32_NTDomain is fixed
             $domainName = (Get-ManagementObject -Class Win32_NTDomain).DomainName
             $myDomain = [Environment]::UserDomainName
             if($domainName -eq $myDomain) {
                 return (Get-UserGroupMembership -Username $Username -GroupSID $GroupSID)
             }
         }
+
         $name = Get-GroupNameFromSID -SID $GroupSID
         return Get-LocalUserGroupMembership -Group $name -Username $Username
     }

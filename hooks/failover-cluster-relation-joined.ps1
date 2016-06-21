@@ -6,8 +6,9 @@ $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
 
+
 try {
-    Import-Module ComputeHooks
+    Import-Module WSFCCharmUtils
 
     Start-WSFCRelationJoinedHook
 } catch {

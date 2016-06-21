@@ -6,6 +6,7 @@ $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
 
+
 try {
     Import-Module JujuHooks
 
@@ -19,12 +20,13 @@ try {
 
     $rids = Get-JujuRelationIds -Relation "amqp"
     foreach ($rid in $rids){
-        $ret = Set-JujuRelation -RelationId $rid -Settings $relation_set
-        if ($ret -eq $false){
+        try {
+            Set-JujuRelation -RelationId $rid -Settings $relation_set
+        } catch {
            Write-JujuWarning "Failed to set amqp relation"
         }
     }
-}catch{
+} catch {
     Write-HookTracebackToLog $_
     exit 1
 }
