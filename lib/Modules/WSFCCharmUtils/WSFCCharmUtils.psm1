@@ -1,4 +1,4 @@
-# Copyright 2014-2016 Cloudbase Solutions Srl
+# Copyright 2016 Cloudbase Solutions Srl
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -13,6 +13,10 @@
 #    under the License.
 
 Import-Module JujuHooks
+Import-Module JujuLogging
+Import-Module ADCharmUtils
+Import-Module JujuWindowsUtils
+
 
 $COMPUTERNAME = [System.Net.Dns]::GetHostName()
 
@@ -20,8 +24,8 @@ $COMPUTERNAME = [System.Net.Dns]::GetHostName()
 function Get-WSFCContext {
     $key = "clustered-$COMPUTERNAME"
     $requiredCtxt = @{
-        $key = $null;
-        'cluster-name' = $null;
+        $key = $null
+        'cluster-name' = $null
         'cluster-ip' = $null
     }
     $ctxt = Get-JujuRelationContext -Relation "failover-cluster" -RequiredContext $requiredCtxt
@@ -32,42 +36,40 @@ function Get-WSFCContext {
 }
 
 function Set-ClusterableStatus {
-    [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$true)]
-        [int]$Ready=1,
+        [boolean]$Ready=$true,
         [Parameter(Mandatory=$false)]
         [string]$Relation
     )
-    PROCESS {
-        $relation_set = @{
-            "computername"=$COMPUTERNAME; 
-            "ready"=$Ready;
-        }
-        if($Relation) {
-            $rids = Get-JujuRelationIds -Relation $Relation
-        } else {
-            $rids = Get-JujuRelationId
-        }
-        foreach ($rid in $rids){
-            Write-JujuInfo ("Setting: {0} --> {1}" -f @($relation_set["computername"], $relation_set["ready"]))
-            Set-JujuRelation -RelationId $rid -Settings $relation_set
-        }
+
+    $relationSettings = @{
+        "computername" = $COMPUTERNAME
+        "ready" = $Ready
+    }
+    if($Relation) {
+        $rids = Get-JujuRelationIds -Relation $Relation
+    } else {
+        $rids = Get-JujuRelationId
+    }
+    foreach ($rid in $rids) {
+        Write-JujuWarning ("Setting: {0} --> {1}" -f @($relationSettings["computername"], $relationSettings["ready"]))
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
 }
 
-function Start-WSFCRelationJoinedHook {
+function Invoke-WSFCRelationJoinedHook {
     $ctx = Get-ActiveDirectoryContext
     if(!$ctx.Count -or !(Confirm-IsInDomain $ctx["domainName"])) {
-        Set-ClusterableStatus -Ready 0 -Relation "failover-cluster"
+        Set-ClusterableStatus -Ready $false -Relation "failover-cluster"
         return
     }
 
     if (Get-IsNanoServer) {
         $features = @('FailoverCluster-NanoServer')
     } else {
-        $features = @('File-Services','FailoverCluster-FullServer','FailoverCluster-Powershell')
+        $features = @('Failover-Clustering', 'File-Services')
     }
     Install-WindowsFeatures -Features $features
-    Set-ClusterableStatus -Ready 1 -Relation "failover-cluster"
+    Set-ClusterableStatus -Ready $true -Relation "failover-cluster"
 }

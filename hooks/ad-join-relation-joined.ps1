@@ -1,46 +1,47 @@
+# Copyright 2014-2016 Cloudbase Solutions Srl
 #
-# Copyright 2014-2016 Cloudbase Solutions SRL
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with the License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
 #
 
 $ErrorActionPreference = "Stop"
 
 Import-Module JujuLogging
 
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
-
-
-function Get-AdUserAndGroup {
-    $adUser = Get-JujuCharmConfig -Scope 'ad-user'
-    $creds = @{
-        $adUser=@(
-            "CN=Domain Admins,CN=Users"
-        );
-    }
-    $ret = Get-MarshaledObject $creds
-    return $ret
-}
 
 try {
-    Import-Module ADCharmUtils
-    Import-Module JujuUtils
     Import-Module JujuHooks
+    Import-Module JujuUtils
 
-    $group = Get-JujuCharmConfig -Scope 'ad-computer-group'
-    $encGr = ConvertTo-Base64 ("CN={0},OU=OpenStack" -f @($group))
-    $adUser = Get-AdUserAndGroup
+    $settings = @{
+        'computer-name' = $COMPUTERNAME
+    }
 
-    $relationSettings = @{
-        'adusers' = $adUser;
-        'computername' = $COMPUTERNAME;
-        "computerGroup" = $encGr;
+    $cfg = Get-JujuCharmConfig
+
+    if($cfg['ad-user']) {
+        $adUsers = @{
+            $cfg['ad-user'] = @("Domain Admins", "Users")
+        }
+        $settings['ad-users'] = Get-MarshaledObject $adUsers
+    }
+
+    if($cfg['ad-computer-group']) {
+        $settings['computer-group'] = $cfg['ad-computer-group']
     }
 
     $rids = Get-JujuRelationIds -Relation "ad-join"
-    foreach ($rid in $rids){
-        $ret = Set-JujuRelation -RelationId $rid -Settings $relationSettings
-        if ($ret -eq $false){
-           Write-JujuWarning "Failed to set ad-join relation"
-        }
+    foreach ($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $settings
     }
 } catch {
     Write-HookTracebackToLog $_

@@ -273,6 +273,8 @@ function Install-Msi {
     Full path to the MSI installer
     .PARAMETER LogFilePath
     The path to the install log file.
+    .PARAMETER ExtraArgs
+    Extra arguments passed to the installer.
     #>
     [CmdletBinding()]
     param(
@@ -280,7 +282,9 @@ function Install-Msi {
         [Alias("MsiFilePath")]
         [string]$Installer,
         [Parameter(Mandatory=$false)]
-        [string]$LogFilePath
+        [string]$LogFilePath,
+        [Parameter(Mandatory=$false)]
+        [string[]]$ExtraArgs
     )
     PROCESS {
         $args = @(
@@ -295,6 +299,10 @@ function Install-Msi {
                 New-Item -ItemType Directory $parent
             }
             $args += @("/l*v", $LogFilePath)
+        }
+
+        if($ExtraArgs) {
+            $args += $ExtraArgs
         }
 
         if (!(Test-Path $Installer)){
@@ -357,28 +365,49 @@ function Install-WindowsFeatures {
         [array]$Features
     )
     PROCESS {
+        if(Get-IsNanoServer) {
+            Enable-OptionalWindowsFeatures -Features $Features
+            return
+        }
         $rebootNeeded = $false
-        $enableFeature = Get-Command Enable-WindowsOptionalFeature -ErrorAction SilentlyContinue
         foreach ($feature in $Features) {
-            if ($enableFeature) {
-                $featureStat = Get-WindowsOptionalFeature -Online -FeatureName $feature
-                if ($featureStat.State -ne "Enabled") {
-                    $featureInstall = Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart
-                    if ($featureInstall.RestartNeeded) {
-                        $rebootNeeded = $true
-                    }
-                } elseif ($featureStat.RestartNeeded) {
+            $state = Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop
+            if ($state.Success -ne $true) {
+                Throw "Install failed for feature $feature"
+            }
+            if ($state.RestartNeeded -eq 'Yes') {
+                $rebootNeeded = $true
+            }
+        }
+        if ($rebootNeeded) {
+            Invoke-JujuReboot -Now
+        }
+    }
+}
+
+function Enable-OptionalWindowsFeatures {
+    <#
+    .SYNOPSIS
+    This function enables optional windows features.
+    .PARAMETER Features
+    Array of optional Windows feature names that will be enabled.
+    #>
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [array]$Features
+    )
+    PROCESS {
+        $rebootNeeded = $false
+        foreach ($feature in $Features) {
+            $state = Get-WindowsOptionalFeature -Online -FeatureName $feature
+            if ($state.State -ne "Enabled") {
+                $state = Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart
+                if ($state.RestartNeeded) {
                     $rebootNeeded = $true
                 }
-            } else {
-                $state = Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop
-                if ($state.Success -eq $true) {
-                    if ($state.RestartNeeded -eq 'Yes') {
-                        $rebootNeeded = $true
-                    }
-                } else {
-                    throw "Install failed for feature $feature"
-                }
+            } elseif ($state.RestartNeeded) {
+                $rebootNeeded = $true
             }
         }
         if ($rebootNeeded) {
@@ -576,17 +605,12 @@ function Confirm-IsMemberOfGroup {
     PROCESS {
         $inDomain = (Get-ManagementObject -Class Win32_ComputerSystem).PartOfDomain
         if($inDomain){
-            if(Get-IsNanoServer) {
-                return (Get-UserGroupMembership -Username $Username -GroupSID $GroupSID)
-            }
-            # NOTE(ibalutoiu): Skip this code on Nano until the bug with Win32_NTDomain is fixed
-            $domainName = (Get-ManagementObject -Class Win32_NTDomain).DomainName
+            $domainName = (Get-ManagementObject -Class Win32_ComputerSystem).Domain
             $myDomain = [Environment]::UserDomainName
             if($domainName -eq $myDomain) {
                 return (Get-UserGroupMembership -Username $Username -GroupSID $GroupSID)
             }
         }
-
         $name = Get-GroupNameFromSID -SID $GroupSID
         return Get-LocalUserGroupMembership -Group $name -Username $Username
     }

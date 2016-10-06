@@ -1,4 +1,4 @@
-# Copyright 2014-2016 Cloudbase Solutions Srl
+# Copyright 2016 Cloudbase Solutions Srl
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -12,74 +12,71 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+Import-Module JujuLogging
+Import-Module JujuHooks
 Import-Module ADCharmUtils
 Import-Module WSFCCharmUtils
-Import-Module JujuHooks
+
 
 $COMPUTERNAME = [System.Net.Dns]::GetHostName()
 
 
-function Remove-UnhealthyStoragePools {
-    # NOTE(ibalutoiu):
-    #     After you reinstall the OS and you still have the extra disks that
-    #     formed a storage pool before, this one is listed with "Unknown" status and
-    #     read-only mode. After disabling read-only flag, the storage pool becomes
-    #     "Unhealthy" and it's unusable.
-    $winPSModules = Join-Path $env:windir "system32\windowspowershell\v1.0\Modules"
-    $env:PSModulePath += ";$winPSModules"
-    Import-Module Storage
-
-    $unknownReadOnly = Get-StoragePool | Where-Object { ($_.HealthStatus -eq "Unknown") -and ($_.IsReadOnly -eq $true) }
-    foreach($pool in $unknownReadOnly) {
-        Set-StoragePool -InputObject $pool -IsReadOnly $false
-    }
-    $unhealthyReadOnly = Get-StoragePool | Where-Object { $_.HealthStatus -eq "Unhealthy" }
-    foreach($pool in $unknownReadOnly) {
-        Remove-StoragePool -InputObject $pool -Confirm:$false
+function Remove-ExtraStoragePools {
+    Update-StorageProviderCache
+    # Remove unhealthy storage pools
+    $extraStoragePools = Get-StoragePool | Where-Object { $_.IsPrimordial -eq $false -and
+                                                          $_.HealthStatus -ne "Healthy" }
+    foreach($storagePool in $extraStoragePools) {
+        Set-StoragePool -InputObject $storagePool -IsReadOnly:$false -ErrorAction SilentlyContinue
+        $storagePool | Get-VirtualDisk | Remove-VirtualDisk -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-StoragePool -InputObject $storagePool -Confirm:$false -ErrorAction SilentlyContinue
     }
 }
 
 function Clear-ExtraDisks {
+    Get-PhysicalDisk | Reset-PhysicalDisk -ErrorAction SilentlyContinue
     $extraDisks = Get-Disk | Where-Object { $_.IsBoot -eq $false -and
                                             $_.IsSystem -eq $false -and
                                             $_.Number -ne $null }
     if($extraDisks) {
         $offline = $extraDisks | Where-Object { $_.IsOffline -eq $true }
         if($offline) {
-            Set-Disk -InputObject $offline -IsOffline:$False
+            Set-Disk -InputObject $offline -IsOffline:$False -ErrorAction Stop
         }
         $readonly = $extraDisks | Where-Object { $_.IsReadOnly -eq $true }
-        if($readonly){
-            Set-Disk -InputObject $readonly -IsReadOnly:$False
+        if($readonly) {
+            Set-Disk -InputObject $readonly -IsReadOnly:$False -ErrorAction Stop
         }
         $initializedDisks = $extraDisks | Where-Object { $_.PartitionStyle -ne "RAW" }
         if($initializedDisks) {
-            Clear-Disk -InputObject $initializedDisks -RemoveData -RemoveOEM -Confirm:$false
+            Clear-Disk -InputObject $initializedDisks -RemoveData -RemoveOEM -Confirm:$false -ErrorAction Stop
+        }
+        $extraDisks | ForEach-Object {
+            Set-Disk -InputObject $_ -IsReadOnly:$true -ErrorAction Stop
+            Set-Disk -InputObject $_ -IsOffline:$true -ErrorAction Stop
         }
     }
 }
 
-function Start-S2DRelationChangedHook {
+function Invoke-S2DRelationJoinedHook {
     $adCtxt = Get-ActiveDirectoryContext
     if (!$adCtxt.Count) {
-        Write-JujuLog "Delaying the S2D relation changed hook until AD context is ready"
+        Write-JujuWarning "Delaying the S2D relation joined hook until AD context is ready"
         return
     }
     $wsfcCtxt = Get-WSFCContext
     if (!$wsfcCtxt.Count) {
-        Write-JujuLog "Delaying the S2D relation changed hook until WSFC context is ready"
+        Write-JujuWarning "Delaying the S2D relation joined hook until WSFC context is ready"
         return
     }
     $settings = @{
-        'ready' = $true;
-        'computername' = $COMPUTERNAME;
-        'joined-cluster-name' = $wsfcCtxt['cluster-name']
+        'ready' = $true
+        'computername' = $COMPUTERNAME
+        'cluster-name' = $wsfcCtxt['cluster-name']
+        'cluster-ip' = $wsfcCtxt['cluster-ip']
     }
     $rids = Get-JujuRelationIds -Relation 's2d'
     foreach ($rid in $rids) {
-        $ret = Set-JujuRelation -RelationId $rid -Settings $settings
-        if ($ret -ne $true) {
-            Write-JujuWarning "Failed to set S2D relation context."
-        }
+        Set-JujuRelation -RelationId $rid -Settings $settings
     }
 }

@@ -18,8 +18,8 @@ series:
 provides:
   cloud-compute:
     interface: nova-compute
-  ad-info:
-    interface: ad-info
+  cinder-accounts:
+    interface: share-access
   local-monitors:
     interface: local-monitors
     scope: container
@@ -30,8 +30,8 @@ requires:
     interface: rabbitmq
   image-service:
     interface: glance
-  nova-ceilometer:
-    interface: nova-ceilometer
+  neutron-plugin-api:
+    interface: neutron-plugin-api
   ad-join:
     interface: ad-join
   failover-cluster:
@@ -40,8 +40,3 @@ requires:
     interface: hgs
   free-rdp:
     interface: free-rdp
-peers:
-  compute-peer:
-    interface: nova
-  hyperv-peer:
-    interface: hyperv-peer

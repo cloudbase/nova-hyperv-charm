@@ -16,8 +16,6 @@ Import-Module powershell-yaml
 Import-Module JujuHelper
 Import-Module JujuLogging
 
-$global:config = $null
-
 function Get-StateInformationRepository {
     <#
     .SYNOPSIS
@@ -144,14 +142,15 @@ function Get-JujuCharmConfig {
         [string]$Scope=$null
     )
     PROCESS {
-        $cmd = @("config-get.exe", "--format=yaml")
-        if(!$global:config) {
-            $global:config = ((Invoke-JujuCommand -Command $cmd) -Join "`r`n" | ConvertFrom-Yaml)
+        if(!$Global:CHARM_CFG) {
+            $cmd = @("config-get.exe", "--format=yaml")
+            $cfg = (Invoke-JujuCommand -Command $cmd) -Join "`r`n" | ConvertFrom-Yaml
+            Set-Variable -Name "CHARM_CFG" -Value $cfg -Scope Global -Option ReadOnly
         }
         if ($Scope){
-            return $global:config[$Scope]
+            return $Global:CHARM_CFG[$Scope]
         }
-        return $global:config
+        return $Global:CHARM_CFG
     }
 }
 
@@ -498,11 +497,10 @@ function Resolve-Address {
         if((Confirm-IP $Address)){
             return $Address
         }
-        Write-JujuInfo "Resolving $Address"
         $ip = Start-ExecuteWithRetry {
             $return = Invoke-JujuCommand -Command @("ipconfig", "/flushdns")
-            $ip = ([system.net.dns]::GetHostAddresses($Address))
-            return $ip
+            $ip = ([system.net.dns]::GetHostAddresses($Address))[0].ipaddresstostring
+            return $ip 
         }
         if(!$ip){
             Throw ("Could not resolve address {0} to IP" -f $Address)
@@ -516,31 +514,12 @@ function Get-JujuUnitPrivateIP {
     .SYNOPSIS
      A helper function to get the IPv4 representation (as string) of a units private-address
     #>
-    [CmdletBinding()]
-    Param(
-        [Parameter(Mandatory=$false)]
-        [ValidateSet("IPv4", "IPv6", "any")]
-        [string]$AddressFamily="IPv4"
-    )
     PROCESS {
-        $map = @{
-            "IPv4"="InterNetwork";
-            "IPv6"="InterNetworkV6"
-        }
-
         $addr = Get-JujuUnit -Attribute "private-address"
         if((Confirm-IP $addr)){
             return $addr
         }
-        $ips = Resolve-Address -Address $addr
-        if($AddressFamily -and $map[$AddressFamily]) {
-            $filtered = $ips | Where-Object {$_.AddressFamily -eq $map[$AddressFamily]}
-            if(!$filtered) {
-                Throw "Failed to get $AddressFamily address"
-            }
-            return $filtered
-        }
-        return $ips
+        return (Resolve-Address -Address $addr)
     }
 }
 
@@ -953,8 +932,7 @@ function Set-JujuStatus {
     <#
     .SYNOPSIS
     Set the status of a running unit, optionally allowing the charm author to also set
-    a message along with the status. It is recommended that the charm set its status and
-    a message when the charm transitions from one state to another.
+    a message along with the status.
     .PARAMETER Status
     One of the following statuses: maintenance, blocked, waiting, active
     .PARAMETER Message
@@ -990,9 +968,7 @@ function Set-JujuStatus {
             $js = ConvertTo-Yaml $StatusData
             $cmd += $js
         }
-        if ((Get-JujuStatus) -ne $Status) {
-            Invoke-JujuCommand -Command $cmd | Out-Null
-        }
+        Invoke-JujuCommand -Command $cmd | Out-Null
     }
 }
 
@@ -1100,7 +1076,7 @@ function Set-CharmState {
     .PARAMETER Key
     A key to identify the information by
     .PARAMETER Value
-    The value we want to store. This must be a string.
+    The value we want to store.
     #>
     [CmdletBinding()]
     param(

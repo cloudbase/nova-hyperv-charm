@@ -19,9 +19,20 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module ComputeHooks
+    Import-Module S2DCharmUtils
 
-    Invoke-ConfigChangedHook
+    # NOTE(ibalutoiu):
+    # The system PowerShell modules should be already part of the environment
+    # variable $env:PSModulePath. On Nano Server with Juju 2.0 they are missing
+    # due to a known bug. The following line will be removed once the bug
+    # it's fixed.
+    $env:PSModulePath += ";{0}" -f @(Join-Path $PSHome "Modules")
+
+    Import-Module Storage
+
+    Remove-ExtraStoragePools
+    Clear-ExtraDisks
+    Invoke-S2DRelationJoinedHook
 } catch {
     Write-HookTracebackToLog $_
     exit 1

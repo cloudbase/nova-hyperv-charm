@@ -12,55 +12,17 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-Import-Module JujuHelper
-Import-Module JujuHooks
-Import-Module JujuUtils
 Import-Module JujuWindowsUtils
-Import-Module Networking
-Import-Module WSFCCharmUtils
-Import-Module Templating
+Import-Module JujuHooks
+Import-Module JujuLogging
+Import-Module JujuUtils
 Import-Module HyperVNetworking
 Import-Module OVSCharmUtils
+Import-Module JujuHelper
+Import-Module S2DCharmUtils
 Import-Module ADCharmUtils
+Import-Module OpenStackCommon
 
-$INSTALL_DIR = "${env:ProgramFiles}\Cloudbase Solutions\OpenStack\Nova"
-$OVS_INSTALL_DIR = "${env:ProgramFiles}\Cloudbase Solutions\Open vSwitch"
-$OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
-$env:OVS_RUNDIR = "$env:ProgramData\openvswitch"
-$DISTRO_URLS = @{
-    'kilo' = @{
-        "installer" = @{
-            'msi' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Kilo_2015_1.msi#md5=49a9f59f8800de378c995032cf26aaaf';
-            'zip' = $null;
-        }
-        "cluster" = $false
-    };
-    'liberty' = @{
-        "installer" = @{
-            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Liberty_12_0_0.msi#md5=71b77c82dd7990891e108a98a1ecd234';
-            'zip' = 'https://www.cloudbase.it/downloads/HyperVNovaCompute_Liberty_12_0_0.zip';
-        };
-        "cluster" = $false
-    };
-    'mitaka' = @{
-        "installer" = @{
-            'msi' = "https://cloudbase.it/downloads/HyperVNovaCompute_Mitaka_13_0_0.msi";
-            'zip' = "https://cloudbase.it/downloads/HyperVNovaCompute_Mitaka_13_0_0.zip";
-        };
-        "cluster" = $true
-    };
-}
-$DEFAULT_DISTRO = "mitaka"
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
-
-
-function Open-CharmPorts {
-    $ports = @{
-        "tcp" = @("5985", "5986", "3343", "445", "135", "139");
-        "udp" = @("5985", "5986", "3343", "445", "135", "139");
-    }
-    Open-Ports -Ports $ports | Out-Null
-}
 
 function Install-Prerequisites {
     <#
@@ -94,36 +56,17 @@ function Install-Prerequisites {
     return $rebootNeeded
 }
 
-function Get-OpenstackVersion {
-    $distro = Get-JujuCharmConfig -Scope "openstack-version"
-    if ($distro -eq $false) {
-        $distro = Get-JujuCharmConfig -Scope "openstack-origin"
-    }
-    return $distro
-}
-
-function Get-PythonDir {
-    $pythonDir = Join-Path $INSTALL_DIR "Python27"
-    if (!(Test-Path $pythonDir)) {
-        $pythonDir = Join-Path $INSTALL_DIR "Python"
-        if (!(Test-Path $pythonDir)) {
-            Throw "Could not find python directory"
-        }
-    }
-    return $pythonDir
-}
-
 function New-ExeServiceWrapper {
-    $pythonDir = Get-PythonDir
+    $pythonDir = Get-PythonDir -InstallDir $NOVA_INSTALL_DIR
     $python = Join-Path $pythonDir "python.exe"
     $updateWrapper = Join-Path $pythonDir "Scripts\UpdateWrappers.py"
 
     $cmd = @($python, $updateWrapper, "nova-compute = nova.cmd.compute:main")
     Invoke-JujuCommand -Command $cmd
 
-    $version = Get-JujuCharmConfig -Scope 'openstack-version'
+    $version = Get-OpenstackVersion
     $consoleScript = "neutron-hyperv-agent = neutron.cmd.eventlet.plugins.hyperv_neutron_agent:main"
-    if ($version -eq "mitaka") {
+    if ($version -in @("mitaka", "newton")) {
         $consoleScript = "neutron-hyperv-agent = hyperv.neutron.l2_agent:main"
     }
 
@@ -131,217 +74,88 @@ function New-ExeServiceWrapper {
     Invoke-JujuCommand -Command $cmd
 }
 
-function Get-FilesDir {
-    $charmDir = Get-JujuCharmDir
-    $files =  Join-Path $charmDir "files"
-    return $files
-}
-
-function Get-ServiceWrapper {
-    Param(
-        [Parameter(Mandatory=$false)]
-        [string]$Service
-    )
-    $wrapperName = ("OpenStackService{0}.exe" -f $Service)
-    $svcPath = Join-Path $INSTALL_DIR ("bin\{0}" -f $wrapperName)
-    if (!(Test-Path $svcPath)) {
-        $svcPath = Join-Path $INSTALL_DIR "bin\OpenStackService.exe"
-        if (!(Test-Path $svcPath)) {
-            Throw "Failed to find service wrapper"
-        }
-    }
-    return $svcPath
-}
-
 function Enable-MSiSCSI {
     Write-JujuWarning "Enabling MSiSCSI"
-    $svc = Get-Service MSiSCSI -ErrorAction SilentlyContinue
+    $svc = Get-Service "MSiSCSI" -ErrorAction SilentlyContinue
     if ($svc) {
-        Start-Service MSiSCSI
-        Set-Service MSiSCSI -StartupType Automatic
+        Start-Service "MSiSCSI"
+        Set-Service "MSiSCSI" -StartupType Automatic
     } else {
         Write-JujuWarning "MSiSCSI service was not found"
     }
 }
 
-function New-ConfigFile {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$ServiceName
-    )
-
-    $jujuCharmServices = Get-CharmServices
-    $shouldRestart = $true
-    $service = $jujuCharmServices[$ServiceName]
-    if (!$service) {
-        Write-JujuWarning "No such service $ServiceName. Not generating config"
-        return $false
-    }
-    $incompleteContexts = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
-    $allContexts = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
-    $mergedContext = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
-
-    foreach ($context in $service['context_generators']) {
-        Write-JujuInfo ("Getting context for {0}" -f $context["relation"])
-        $allContexts.Add($context["relation"])
-        $ctx = & $context["generator"]
-        Write-JujuInfo ("Got {0} context: {1}" -f @($context["relation"], $ctx.Keys))
-        if (!$ctx.Count -and $context["mandatory"]) {
-            # Context is empty. Probably peer not ready
-            Write-JujuWarning ("Context for {0} is EMPTY" -f $context["relation"])
-            $incompleteContexts.Add($context["relation"])
-            $shouldRestart = $false
-            continue
-        }
-        foreach ($val in $ctx.Keys) {
-            $mergedContext[$val] = $ctx[$val]
-        }
-    }
-    Set-IncompleteStatusContext -ContextSet $allContexts -Incomplete $incompleteContexts
-    if (!$mergedContext.Count) {
-        return $false
-    }
-    Start-RenderTemplate -Context $mergedContext -TemplateName $service["template"] -OutFile $service["config"]
-    return $shouldRestart
-}
-
-function Get-DataPort {
-    # try and set up bonding early. This will create
-    # a new Net-LbfoTeam and try to acquire an IP address
-    # via DHCP. This interface may receive os-data-network IP.
-    $bondName = New-BondInterface
-    $managementOS = Get-JujuCharmConfig -Scope "vmswitch-management"
-
+function Get-DataPorts {
     $netType = Get-NetType
+
     if ($netType -eq "ovs") {
-        Write-JujuInfo "Trying to fetch OVS data port"
-        $dataPort = Get-OVSDataPort
-        return @($dataPort[0], $false)
+        Write-JujuWarning "Fetching OVS data ports"
+
+        $dataPorts = Get-OVSDataPorts
+        return @($dataPorts, $false)
     }
 
-    if ($bondName) {
-        $adapter = Get-NetAdapter -Name $bondName
-        return @($adapter, $managementOS)
-    }
+    $cfg = Get-JujuCharmConfig
+    $managementOS = $cfg['vmswitch-management']
 
-    Write-JujuInfo "Trying to fetch data port from config"
-    $nic = Get-InterfaceFromConfig
-    if (!$nic) {
-        $nic = Get-FallbackNetadapter
+    Write-JujuWarning "Fetching data port from config"
+
+    $dataPorts = Get-InterfaceFromConfig
+    if (!$dataPorts) {
+        $fallbackAdapter = Get-FallbackNetadapter
+        $dataPorts = @($fallbackAdapter)
         $managementOS = $true
     }
-    $nic = Get-RealInterface $nic[0]
-    return @($nic[0], $managementOS)
+
+    return @($dataPorts, $managementOS)
 }
 
 function Start-ConfigureVMSwitch {
-    $VMswitchName = Get-JujuVMSwitch
-    $vmswitch = Get-VMSwitch -SwitchType External -Name $VMswitchName -ErrorAction SilentlyContinue
-
-    if ($vmswitch) {
-        return $true
+    $cfg = Get-JujuCharmConfig
+    $vmSwitchName = $cfg['vmswitch-name']
+    if (!$vmSwitchName) {
+        $vmSwitchName = $NOVA_DEFAULT_SWITCH_NAME
     }
 
-    $dataPort, $managementOS = Get-DataPort
-    $VMswitches = Get-VMSwitch -SwitchType External -ErrorAction SilentlyContinue
-    if ($VMswitches -and $VMswitches.Count -gt 0) {
-        foreach ($i in $VMswitches) {
-            if ($i.NetAdapterInterfaceDescription -eq $dataPort.InterfaceDescription) {
-                Rename-VMSwitch $i -NewName $VMswitchName
-                Set-VMSwitch -Name $VMswitchName -AllowManagementOS $managementOS
-                return $true
+    [array]$dataPorts, $managementOS = Get-DataPorts
+    $dataPort = $dataPorts[0]
+
+    $vmSwitches = [array](Get-VMSwitch -SwitchType External -ErrorAction SilentlyContinue)
+    foreach ($i in $vmSwitches) {
+        if ($i.NetAdapterInterfaceDescription -eq $dataPort.InterfaceDescription) {
+            $agentRestart = $false
+
+            if($i.Name -ne $vmSwitchName) {
+                $agentRestart = $true
+                Rename-VMSwitch $i -NewName $vmSwitchName | Out-Null
             }
-        }
-    }
 
-    Write-JujuInfo "Adding new vmswitch: $VMswitchName"
-    New-VMSwitch -Name $VMswitchName -NetAdapterName $dataPort.Name -AllowManagementOS $managementOS
-    return $true
-}
-
-function Start-DownloadFile {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$url
-    )
-
-    $URI = [System.Uri]$url
-    $msi = $URI.segments[-1]
-    $downloadLocation = Join-Path "$env:TEMP" $msi
-    if ($URI.fragment) {
-        $fragment = $URI.fragment.Trim("#").Split("=")
-        if ($fragment[0] -eq "md5") {
-            $md5 = $fragment[1]
-        }
-    }
-
-    $fileExists = Test-Path $downloadLocation
-    if ($fileExists) {
-        if ($md5) {
-            $fileHash = (Get-FileHash -Algorithm MD5 $downloadLocation).Hash
-            if ($fileHash -eq $md5){
-                return $downloadLocation
+            if($i.AllowManagementOS -ne $managementOS) {
+                $agentRestart = $true
+                Set-VMSwitch -Name $vmSwitchName -AllowManagementOS $managementOS | Out-Null
             }
-        } else {
-            return $downloadLocation
-        }
-    }
-    Write-JujuInfo "Downloading file from $url to $downloadLocation"
-    try {
-        Start-ExecuteWithRetry {
-            Invoke-FastWebRequest -Uri $url -OutFile $downloadLocation | Out-Null
-        }
-    } catch {
-        Write-JujuErr "Could not download $url to destination $downloadLocation"
-        Throw
-    }
-    return $downloadLocation
-}
 
-function Get-NovaInstaller {
-    $distro = Get-OpenstackVersion
-    $installerUrl = Get-JujuCharmConfig -Scope "installer-url"
-    if ($distro -eq $false){
-        $distro = $DEFAULT_DISTRO
-    }
-    Write-JujuInfo "installer-url is set to: $installerUrl"
-    if (!$installerUrl) {
-        if (!$DISTRO_URLS[$distro] -or !$DISTRO_URLS[$distro]["installer"]) {
-            Throw "Could not find a download URL for $distro"
-        }
-        if ((Get-IsNanoServer)) {
-            if (!$DISTRO_URLS[$distro]["installer"]["zip"]) {
-                Throw "Distro $distro does not support Nano server"
+            if($agentRestart) {
+                $netType = Get-NetType
+                if($netType -eq "ovs") {
+                    $status = (Get-Service -Name $OVS_VSWITCHD_SERVICE_NAME).Status
+                    if($status -eq [System.ServiceProcess.ServiceControllerStatus]::Running) {
+                        Restart-Service $OVS_VSWITCHD_SERVICE_NAME | Out-Null
+                    }
+                }
             }
-            $url = $DISTRO_URLS[$distro]["installer"]["zip"]
-        } else {
-            $url = $DISTRO_URLS[$distro]["installer"]["msi"]
+            return
         }
-    } else {
-        $url = $installerUrl
-    }
-    [string]$location = Start-DownloadFile $url
-    return $location
-}
-
-function Install-NovaFromMSI {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$InstallerPath
-    )
-
-    $hasInstaller = Test-Path $InstallerPath
-    if ($hasInstaller -eq $false) {
-        $InstallerPath = Get-NovaInstaller
     }
 
-    Write-JujuInfo "Installing from MSI installer: $InstallerPath"
-    $unattendedArgs = @("SKIPNOVACONF=1", "INSTALLDIR=`"$INSTALL_DIR`"", "/qn", "/l*v", "$env:APPDATA\log.txt","/i", "$InstallerPath")
-    $ret = Start-Process -FilePath msiexec.exe -ArgumentList $unattendedArgs -Wait -PassThru
-    if ($ret.ExitCode) {
-        Throw ("Failed to install Nova: {0}" -f $ret.ExitCode)
+    if($vmSwitches) {
+        # We might have old switches created by the charm and we reach this code because
+        # 'data-port' and 'vmswitch-name' changed. We just delete the old switches.
+        $vmSwitches | Remove-VMSwitch -Force -Confirm:$false
     }
-    return $true
+
+    Write-JujuWarning "Adding new vmswitch: $vmSwitchName"
+    New-VMSwitch -Name $vmSwitchName -NetAdapterName $dataPort.Name -AllowManagementOS $managementOS | Out-Null
 }
 
 function Install-NovaFromZip {
@@ -350,48 +164,99 @@ function Install-NovaFromZip {
         [string]$InstallerPath
     )
 
-    $distro = Get-OpenstackVersion
-    $templatesDir = Join-Path (Get-JujuCharmDir) "templates"
-    $policyFile = "$templatesDir\$distro\policy.json"
-    if ((Test-Path $INSTALL_DIR)) {
-        Remove-Item -Recurse -Force $INSTALL_DIR | Out-Null
+    if ((Test-Path $NOVA_INSTALL_DIR)) {
+        Remove-Item -Recurse -Force $NOVA_INSTALL_DIR
     }
 
-    Write-JujuInfo "Unzipping $InstallerPath to $INSTALL_DIR"
-    Expand-ZipArchive -ZipFile $InstallerPath -Destination $INSTALL_DIR | Out-Null
-    $configDir = Join-Path $INSTALL_DIR "etc"
+    Write-JujuWarning "Unzipping '$InstallerPath' to '$NOVA_INSTALL_DIR'"
+
+    Expand-ZipArchive -ZipFile $InstallerPath -Destination $NOVA_INSTALL_DIR | Out-Null
+
+    $configDir = Join-Path $NOVA_INSTALL_DIR "etc"
     if (!(Test-Path $configDir)) {
         New-Item -ItemType Directory $configDir | Out-Null
+        $distro = Get-OpenstackVersion
+        $templatesDir = Join-Path (Get-JujuCharmDir) "templates"
+        $policyFile = Join-Path $templatesDir "$distro\policy.json"
         Copy-Item $policyFile $configDir | Out-Null
     }
-    New-ExeServiceWrapper
-    return $true
+
+    New-ExeServiceWrapper | Out-Null
 }
 
-function Install-Nova {
+function Install-NovaFromMSI {
     Param(
         [Parameter(Mandatory=$true)]
         [string]$InstallerPath
     )
 
-    Write-JujuInfo "Running Nova install"
+    $logFile = Join-Path $env:APPDATA "nova-installer-log.txt"
+    $extraParams = @("SKIPNOVACONF=1", "INSTALLDIR=`"$NOVA_INSTALL_DIR`"")
+    Install-Msi -Installer $InstallerPath -LogFilePath $logFile -ExtraArgs $extraParams
 
-    if ($InstallerPath.EndsWith(".zip")) {
-        $installed = Install-NovaFromZip $InstallerPath
-    } elseif ($InstallerPath.EndsWith(".msi")) {
-        $installed = Install-NovaFromMSI $InstallerPath
-    } else {
-        Throw "Unknown Nova installer extension"
+    # Delete the Windows services created by default by the MSI,
+    # so the charm can create them later on.
+    $serviceNames = @(
+        $NOVA_COMPUTE_SERVICE_NAME,
+        $NEUTRON_HYPERV_AGENT_SERVICE_NAME,
+        $NEUTRON_OVS_AGENT_SERVICE_NAME
+    )
+    Remove-WindowsServices -Names $serviceNames
+}
+
+function Install-Nova {
+    Write-JujuWarning "Running Nova install"
+
+    $installerPath = Get-InstallerPath -Project 'Nova'
+
+    $installerExtension = $installerPath.Split('.')[-1]
+    switch($installerExtension) {
+        "zip" {
+            Install-NovaFromZip $installerPath
+        }
+        "msi" {
+            Install-NovaFromMSI $installerPath
+        }
+        default {
+            Throw "Unknown installer extension: $installerExtension"
+        }
     }
-    Install-RootWrap
-    return $installed
+
+    $release = Get-OpenstackVersion
+    Set-JujuApplicationVersion -Version $NOVA_PRODUCT[$release]['version']
+    Set-CharmState -Namespace "novahyperv" -Key "release_installed" -Value $release
+
+    Remove-Item $installerPath
+}
+
+function Get-NeutronServiceName {
+    <#
+    .SYNOPSIS
+    Returns the neutron service name.
+    #>
+
+    $netType = Get-NetType
+    $charmServices = Get-CharmServices
+
+    if ($netType -eq "hyperv") {
+        return $charmServices['neutron']['service']
+    } elseif ($netType -eq "ovs") {
+        return $charmServices['neutron-ovs']['service']
+    }
+
+    Throw "Unknown network type: $netType"
+}
+
+function Get-NovaServiceName {
+    $charmServices = Get-CharmServices
+    return $charmServices['nova']['service']
 }
 
 function Enable-LiveMigration {
     Enable-VMMigration
     $name = Get-MainNetadapter
     $netAddresses = Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4
-    foreach ($netAddress in $netAddresses) {
+    foreach($netAddress in $netAddresses) {
         $prefixLength = $netAddress.PrefixLength
         $netmask = ConvertTo-Mask -MaskLength $prefixLength
         $networkAddress = Get-NetworkAddress -IPAddress $netAddress.IPAddress -SubnetMask $netmask
@@ -402,360 +267,194 @@ function Enable-LiveMigration {
     }
 }
 
-function Confirm-CharmPrerequisites {
-    $services = Get-CharmServices
-    $hypervAgent = Get-Service $services["neutron"]["service"] -ErrorAction SilentlyContinue
-    $novaCompute = Get-Service $services["nova"]["service"] -ErrorAction SilentlyContinue
+function New-CharmServices {
+    $charmServices = Get-CharmServices
 
-    if (!$hypervAgent) {
-        $name = $services["neutron"]["service"]
-        $svcPath = $services["neutron"]["serviceBinPath"]
-        New-Service -Name $name -BinaryPathName $svcPath -DisplayName $name -Description "Neutron Hyper-V Agent" -Confirm:$false
-        Disable-Service $name
-    }
-
-    if (!$novaCompute) {
-        $name = $services["nova"]["service"]
-        $svcPath = $services["nova"]["serviceBinPath"]
-        New-Service -Name $name -BinaryPathName $svcPath -DisplayName $name -Description "Nova Compute" -Confirm:$false
+    foreach($svcName in $charmServices.Keys) {
+        $agent = Get-Service $charmServices[$svcName]["service"] -ErrorAction SilentlyContinue
+        if (!$agent) {
+            New-Service -Name $charmServices[$svcName]["service"] `
+                        -BinaryPathName $charmServices[$svcName]["serviceBinPath"] `
+                        -DisplayName $charmServices[$svcName]["display_name"] -Confirm:$false
+            Stop-Service $charmServices[$svcName]["service"]
+        }
     }
 }
 
 function Start-ConfigureNeutronAgent {
     $services = Get-CharmServices
-    $vmswitch = Get-JujuVMSwitch
     $netType = Get-NetType
 
-    if ($netType -eq "hyperv"){
+    if($netType -eq "hyperv") {
+        Stop-Service $services["neutron-ovs"]["service"]
         Disable-Service $services["neutron-ovs"]["service"]
-        Stop-Service $services["neutron-ovs"]["service"] -ErrorAction SilentlyContinue
+
+        Remove-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info"
 
         Disable-OVS
+        Start-ConfigureVMSwitch
         Enable-Service $services["neutron"]["service"]
 
-        return $services["neutron"]
+    } elseif($netType -eq "ovs") {
+        Stop-Service $services["neutron"]["service"]
+        Disable-Service $services["neutron"]["service"]
+
+        Install-OVS
+
+        Disable-OVS
+        Start-ConfigureVMSwitch
+        Enable-OVS
+
+        New-OVSInternalInterfaces
+        Enable-Service $services["neutron-ovs"]["service"]
     }
-
-    Confirm-OVSPrerequisites
-
-    Disable-Service $services["neutron"]["service"]
-    Stop-Service $services["neutron"]["service"]
-
-    Enable-OVS
-    Enable-Service $services["neutron-ovs"]["service"]
-
-    Confirm-InternalOVSInterfaces
-    return $services["neutron-ovs"]
-}
-
-function Get-OVSInstaller {
-    $installerUrl = Get-JujuCharmConfig -Scope "ovs-installer-url"
-    if ($installerUrl -eq $false) {
-        Throw "Could not find a download URL for $distro"
-    }
-    $location = Start-DownloadFile $installerUrl
-    return $location
-}
-
-function Install-OVS {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$InstallerPath
-    )
-
-    Write-JujuInfo "Running OVS install"
-    $ovs = Get-ManagementObject -Class Win32_Product | Where-Object { $_.Name -match "open vswitch" }
-    if ($ovs) {
-        Write-JujuInfo "OVS is already installed"
-        return $true
-    }
-
-    $hasInstaller = Test-Path $InstallerPath
-    if ($hasInstaller -eq $false) {
-        $InstallerPath = Get-OVSInstaller
-    }
-    Write-JujuInfo "Installing from $InstallerPath"
-    $unattendedArgs = @("INSTALLDIR=`"$OVS_INSTALL_DIR`"", "/qb", "/l*v", "$env:APPDATA\ovs-log.txt", "/i", "$InstallerPath")
-    $ret = Start-Process -FilePath msiexec.exe -ArgumentList $unattendedArgs -Wait -PassThru
-    if ($ret.ExitCode) {
-        Throw "Failed to install OVS: $LASTEXITCODE"
-    }
-    return $true
-}
-
-function Disable-OVS {
-    Stop-Service "ovs-vswitchd" -ErrorAction SilentlyContinue
-    Stop-Service "ovsdb-server" -ErrorAction SilentlyContinue
-
-    Disable-Service "ovs-vswitchd"
-    Disable-Service "ovsdb-server"
-
-    Disable-OVSExtension
-}
-
-function Enable-OVS {
-    Enable-OVSExtension
-
-    Enable-Service "ovsdb-server"
-    Enable-Service "ovs-vswitchd"
-
-    Start-Service "ovsdb-server"
-    Start-Service "ovs-vswitchd"
-}
-
-function Confirm-OVSPrerequisites {
-    try {
-        $ovsdbSvc = Get-Service "ovsdb-server"
-        $ovsSwitchSvc = Get-Service "ovs-vswitchd"
-    } catch {
-        $InstallerPath = Get-OVSInstaller
-        Install-OVS $InstallerPath
-    }
-    if (!(Test-Path $OVS_VSCTL)) {
-        Throw "Could not find ovs-vsctl.exe in location: $OVS_VSCTL"
-    }
-
-    $services = Get-CharmServices
-    $ovsAgent = Get-Service $services["neutron-ovs"]["service"] -ErrorAction SilentlyContinue
-    if (!$ovsAgent) {
-        $name = $services["neutron-ovs"].service
-        $svcPath = $services["neutron-ovs"].serviceBinPath
-        New-Service -Name $name -BinaryPathName $svcPath -DisplayName $name -Description "Neutron Open vSwitch Agent" -Confirm:$false
-        Disable-Service $name
-    }
-}
-
-function Disable-Service {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$ServiceName
-    )
-
-    $svc = Get-Service $ServiceName -ErrorAction SilentlyContinue
-    if ($svc -eq $null) {
-        return $true
-    }
-    Get-Service $ServiceName | Set-Service -StartupType Disabled
-}
-
-function Enable-Service {
-    Param(
-        [Parameter(Mandatory=$true)]
-        [string]$ServiceName
-    )
-
-    $svc = Get-Service $ServiceName -ErrorAction SilentlyContinue
-    if ($svc -eq $null) {
-        return $true
-    }
-    Get-Service $ServiceName | Set-Service -StartupType Automatic
 }
 
 function Restart-Neutron {
-    $svc = Start-ConfigureNeutronAgent
-    Stop-Service $svc.service
-    Start-Service $svc.service
+    $serviceName = Get-NeutronServiceName
+    Stop-Service $serviceName
+    Start-Service $serviceName
 }
 
 function Restart-Nova {
-    $services = Get-CharmServices
-    Stop-Service $services.nova.service
-    Start-Service $services.nova.service
-}
-
-function Stop-Nova {
-    $services = Get-CharmServices
-    Stop-Service $services.nova.service
-}
-
-function Stop-Neutron {
-    $services = Get-CharmServices
-    $netType = Get-NetType
-    if ($netType -eq "hyperv") {
-        Stop-Service $services["neutron"]["service"]
-    } elseif ($netType -eq "ovs") {
-        Stop-Service $services['neutron-ovs']['service']
-    }
-}
-
-function Import-CloudbaseCert {
-    $filesDir = Get-FilesDir
-    $crt = Join-Path $filesDir "Cloudbase_signing.cer"
-    if (!(Test-Path $crt)) {
-        return $false
-    }
-    Import-Certificate $crt -StoreLocation LocalMachine -StoreName TrustedPublisher
-}
-
-function Install-RootWrap {
-    $templatesDir =  Join-Path (Get-JujuCharmDir) "templates"
-    $rootWrap = Join-Path $templatesDir "ovs\rootwrap.cmd"
-
-    if (!(Test-Path $rootWrap)) {
-        return $true
-    }
-
-    $dst = Join-Path $INSTALL_DIR "bin\rootwrap.cmd"
-    $parent = Split-Path -Path $dst -Parent
-    $exists = Test-Path $parent
-    if (!$exists) {
-        New-Item -ItemType Directory $parent | Out-Null
-    }
-    Copy-Item $rootWrap $dst
-    return $true
+    $serviceName = Get-NovaServiceName
+    Stop-Service $serviceName
+    Start-Service $serviceName
 }
 
 function Get-CharmServices {
     $distro = Get-OpenstackVersion
-    $novaConf = Join-Path $INSTALL_DIR "etc\nova.conf"
-    $neutronConf = Join-Path $INSTALL_DIR "etc\neutron_hyperv_agent.conf"
-    $neutronML2Conf = Join-Path $INSTALL_DIR "etc\ml2_conf.ini"
-    $serviceWrapperNova = Get-ServiceWrapper -Service "Nova"
-    $serviceWrapperNeutron = Get-ServiceWrapper -Service "Neutron"
-    $pythonDir = Get-PythonDir
+
+    $novaConf = Join-Path $NOVA_INSTALL_DIR "etc\nova.conf"
+    $neutronHypervConf = Join-Path $NOVA_INSTALL_DIR "etc\neutron_hyperv_agent.conf"
+    $neutronOVSConf = Join-Path $NOVA_INSTALL_DIR "etc\neutron_ovs_agent.conf"
+
+    $serviceWrapperNova = Get-ServiceWrapper -Service "Nova" -InstallDir $NOVA_INSTALL_DIR
+    $serviceWrapperNeutron = Get-ServiceWrapper -Service "Neutron" -InstallDir $NOVA_INSTALL_DIR
+
+    $pythonDir = Get-PythonDir -InstallDir $NOVA_INSTALL_DIR
+
     $novaExe = Join-Path $pythonDir "Scripts\nova-compute.exe"
     $neutronHypervAgentExe = Join-Path $pythonDir "Scripts\neutron-hyperv-agent.exe"
-    $neutronOpenvswitchExe = Join-Path $pythonDir "Scripts\neutron-openvswitch-agent.exe"
+    $neutronOVSAgentExe = Join-Path $pythonDir "Scripts\neutron-openvswitch-agent.exe"
+
     $jujuCharmServices = @{
         "nova" = @{
-            "template" = "$distro\nova.conf";
-            "service" = "nova-compute";
-            "binpath" = "$novaExe";
-            "serviceBinPath" = "`"$serviceWrapperNova`" nova-compute `"$novaExe`" --config-file `"$novaConf`"";
-            "config" = "$novaConf";
+            "template" = "$distro\nova.conf"
+            "service" = $NOVA_COMPUTE_SERVICE_NAME
+            "binpath" = "$novaExe"
+            "serviceBinPath" = "`"$serviceWrapperNova`" nova-compute `"$novaExe`" --config-file `"$novaConf`""
+            "config" = "$novaConf"
+            "display_name" = "Nova Compute Hyper-V Agent"
             "context_generators" = @(
                 @{
-                    "generator" = "Get-RabbitMQContext";
-                    "relation" = "amqp";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-RabbitMQContext").ScriptBlock
+                    "relation" = "amqp"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-NeutronContext";
-                    "relation" = "cloud-compute";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-CloudComputeContext").ScriptBlock
+                    "relation" = "cloud-compute"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-GlanceContext";
-                    "relation" = "image-service";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-GlanceContext").ScriptBlock
+                    "relation" = "image-service"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-CharmConfigContext";
-                    "relation" = "config";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-CharmConfigContext").ScriptBlock
+                    "relation" = "config"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-SystemContext";
-                    "relation" = "system";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-SystemContext").ScriptBlock
+                    "relation" = "system"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-S2DContext";
-                    "relation" = "s2d";
-                    "mandatory" = $false;
+                    "generator" = (Get-Item "function:Get-S2DContext").ScriptBlock
+                    "relation" = "s2d"
+                    "mandatory" = $false
                 },
                 @{
-                    "generator" = "Get-FreeRDPContext";
-                    "relation" = "free-rdp";
-                    "mandatory" = $false;
+                    "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
+                    "relation" = "free-rdp"
+                    "mandatory" = $false
                 }
-            );
-        };
+            )
+        }
+
         "neutron" = @{
             "template" = "$distro\neutron_hyperv_agent.conf"
-            "service" = "neutron-hyperv-agent";
-            "binpath" = "$neutronHypervAgentExe";
-            "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-hyperv-agent `"$neutronHypervAgentExe`" --config-file `"$neutronConf`"";
-            "config" = "$neutronConf";
+            "service" = $NEUTRON_HYPERV_AGENT_SERVICE_NAME
+            "binpath" = "$neutronHypervAgentExe"
+            "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-hyperv-agent `"$neutronHypervAgentExe`" --config-file `"$neutronHypervConf`""
+            "config" = "$neutronHypervConf"
+            "display_name" = "Neutron Hyper-V Agent"
             "context_generators" = @(
                 @{
-                    "generator" = "Get-RabbitMQContext";
-                    "relation" = "amqp";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-RabbitMQContext").ScriptBlock
+                    "relation" = "amqp"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-NeutronContext";
-                    "relation" = "cloud-compute";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-CharmConfigContext").ScriptBlock
+                    "relation" = "config"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-CharmConfigContext";
-                    "relation" = "config";
-                    "mandatory" = $true;
-                },
-                @{
-                    "generator" = "Get-SystemContext";
-                    "relation" = "system";
-                    "mandatory" = $true;
-                },
-                @{
-                    "generator" = "Get-S2DContext";
-                    "relation" = "s2d";
-                    "mandatory" = $false;
+                    "generator" = (Get-Item "function:Get-SystemContext").ScriptBlock
+                    "relation" = "system"
+                    "mandatory" = $true
                 }
-                );
-        };
+            )
+        }
+
         "neutron-ovs" = @{
-            "template" = "$distro\ml2_conf.ini"
-            "service" = "neutron-openvswitch-agent";
-            "binpath" = "$neutronOpenvswitchExe";
-            "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-openvswitch-agent `"$neutronOpenvswitchExe`" --config-file `"$neutronML2Conf`"";
-            "config" = "$neutronML2Conf";
+            "template" = "$distro\neutron_ovs_agent.conf"
+            "service" = $NEUTRON_OVS_AGENT_SERVICE_NAME
+            "binpath" = "$neutronOVSAgentExe"
+            "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-openvswitch-agent `"$neutronOVSAgentExe`" --config-file `"$neutronOVSConf`""
+            "config" = "$neutronOVSConf"
+            "display_name" = "Neutron Open vSwitch Agent"
             "context_generators" = @(
                 @{
-                    "generator" = "Get-RabbitMQContext";
-                    "relation" = "amqp";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-RabbitMQContext").ScriptBlock
+                    "relation" = "amqp"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-NeutronContext";
-                    "relation" = "cloud-compute";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-CharmConfigContext").ScriptBlock
+                    "relation" = "config"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-CharmConfigContext";
-                    "relation" = "config";
-                    "mandatory" = $true;
+                    "generator" = (Get-Item "function:Get-SystemContext").ScriptBlock
+                    "relation" = "system"
+                    "mandatory" = $true
                 },
                 @{
-                    "generator" = "Get-SystemContext";
-                    "relation" = "system";
-                    "mandatory" = $true;
-                },
-                @{
-                    "generator" = "Get-S2DContext";
-                    "relation" = "s2d";
-                    "mandatory" = $false;
+                    "generator" = (Get-Item "function:Get-NeutronApiContext").ScriptBlock
+                    "relation" = "neutron-plugin-api"
+                    "mandatory" = $true
                 }
-                );
-        };
+            )
+        }
     }
+
     return $jujuCharmServices
 }
 
-function Set-FreeRdpRelation {
-    $adCtxt = Get-ActiveDirectoryContext
-    $relationSettings = @{}
-    if($adCtxt["adcredentials"]) {
-        $relationSettings['username'] = $adCtxt["adcredentials"][0]["username"]
-        $relationSettings['password'] = $adCtxt["adcredentials"][0]["password"]
-
-        $rids = Get-JujuRelationIds 'free-rdp'
-        foreach ($rid in $rids) {
-            Set-JujuRelation -RelationId $rid -Settings $relationSettings
-        }
-    }
-}
-
 function Get-FreeRDPContext {
-    Write-JujuLog "Getting context from FreeRDP"
+    Write-JujuWarning "Getting context from FreeRDP"
+
     $required = @{
-        "enabled" = $null;
-        "html5_proxy_base_url" = $null;
+        "enabled" = $null
+        "html5_proxy_base_url" = $null
     }
 
     $ctx = Get-JujuRelationContext -Relation "free-rdp" -RequiredContext $required
-    Write-JujuWarning "Context for FreeRDP is: $ctx"
     if (!$ctx.Count) {
         return @{}
     }
@@ -763,115 +462,74 @@ function Get-FreeRDPContext {
     return $ctx
 }
 
-function Get-RabbitMQContext {
-    Write-JujuLog "Generating context for RabbitMQ"
-    $username = Get-JujuCharmConfig -Scope 'rabbit-user'
-    $vhost = Get-JujuCharmConfig -Scope 'rabbit-vhost'
-    if (!$username -or !$vhost) {
-        Write-JujuWarning "Missing required charm config options: rabbit-user or rabbit-vhost"
-    }
-
-    $required = @{
-        "hostname"=$null;
-        "password"=$null;
-    }
-
-    $optional = @{
-        "vhost"=$null;
-        "username"=$null;
-        "ha_queues"=$null;
-    }
-
-    $ctx = Get-JujuRelationContext -Relation "amqp" -RequiredContext $required -OptionalContext $optional
-
-    $data = @{}
-
-    if ($ctx.Count) {
-        if (!$ctx["username"]) {
-            $data["rabbit_userid"] = $username
-        } else {
-            $data["rabbit_userid"] = $ctx["username"]
-        }
-        if (!$ctx["vhost"]) {
-            $data["rabbit_virtual_host"] = $vhost
-        } else {
-            $data["rabbit_virtual_host"] = $ctx["vhost"]
-        }
-        if ($ctx["ha_queues"]) {
-            $data["rabbit_ha_queues"] = "True"
-        } else {
-            $data["rabbit_ha_queues"] = "False"
-        }
-        $data["rabbit_host"]=$ctx["hostname"];
-        $data["rabbit_password"]=$ctx["password"];
-    }
-    return $data
-}
-
 function Get-S2DContext {
-    [string]$instancesDir = (Get-JujuCharmConfig -Scope 'instances-dir').Replace('/', '\')
-    $ctxt = @{
-        "instances_path" = $instancesDir;
-        "compute_driver" = "hyperv.nova.driver.HyperVDriver";
+    Write-JujuWarning "Generating context for S2D"
+
+    $version = Get-OpenstackVersion
+    if (!$NOVA_PRODUCT[$version]['compute_cluster_driver']) {
+        Write-JujuWarning "Hyper-V Cluster driver is not supported for release '$version'"
+        return @{}
     }
 
     $required = @{
-        "volumepath"=$null;
+        "volume-path" = $null
     }
     $s2dCtxt = Get-JujuRelationContext -Relation "s2d" -RequiredContext $required
-    $version = Get-JujuCharmConfig -Scope 'openstack-version'
-    $enableCluster = Get-JujuCharmConfig -Scope 'enable-cluster-driver'
-    if ($s2dCtxt.Count) {
-        if ($s2dCtxt["volumepath"] -and (Test-Path $s2dCtxt["volumepath"])) {
-            [string]$ctxt["instances_path"] = Join-Path $s2dCtxt["volumepath"] "Instances"
-        } else {
-            Write-JujuWarning "Relation information states that an s2d volume should be present, but could not be found locally."
-        }
-    }
-    if ($DISTRO_URLS[$version]['cluster'] -and $enableCluster) {
-        $ctxt['compute_driver'] = 'hyperv.nova.cluster.driver.HyperVClusterDriver'
+    if(!$s2dCtxt.Count) {
+        return @{}
     }
 
-    # Try and create the instanced_dir on the clustered storage. We do not bother testing if the
-    # folder is already there before attempting to create it. There is a chance another node will
-    # create the folder between the Test-Path call and the mkdir call. Might as well try, and check
-    # for the existance of the folder if the command errors out.
+    $volumePath = $s2dCtxt['volume-path']
+    if (!(Test-Path $volumePath)) {
+        Write-JujuWarning "Relation information states that an s2d volume should be present, but could not be found locally."
+        return @{}
+    }
+
+    $cfg = Get-JujuCharmConfig
+    if(!$cfg['enable-cluster-driver']) {
+        Write-JujuWarning "S2D context is ready but cluster driver is disabled"
+        return @{}
+    }
+
+    [string]$instancesClusterDir = Join-Path $volumePath "Instances"
+    $ctxt = @{
+        "instances_cluster_dir" = $instancesClusterDir
+        "compute_cluster_driver" = $NOVA_PRODUCT[$version]['compute_cluster_driver']
+    }
+
+    # Catch any IO error from mkdir, on the count that being a clustered storage
+    # another node might create the folder between the time we Test-Path and
+    # the time we execute mkdir. Test again in case of IO exception.
     try {
-        if (!(Test-Path $ctxt["instances_path"])) {
-            New-Item -ItemType Directory $ctxt["instances_path"] | Out-Null
+        if (!(Test-Path $ctxt["instances_cluster_dir"])) {
+            New-Item -ItemType Directory $ctxt["instances_cluster_dir"] | Out-Null
         }
    } catch [System.IO.IOException] {
-        if (!(Test-Path $ctxt["instances_path"])) {
+        if (!(Test-Path $ctxt["instances_cluster_dir"])) {
             Throw $_
         }
     }
+
     return $ctxt
 }
 
-function Get-NeutronContext {
-    Write-JujuLog "Generating context for Neutron"
-
-    $logdir = (Get-JujuCharmConfig -Scope 'log-dir').Replace('/', '\')
-    $switchName = Get-JujuVMSwitch
-    if (!(Test-Path $logdir)) {
-        New-Item -ItemType Directory $logdir
-    }
+function Get-CloudComputeContext {
+    Write-JujuWarning "Generating context for nova cloud controller"
 
     $required = @{
-        "service_protocol"=$null;
-        "service_port"=$null;
-        "auth_host"=$null;
-        "auth_port"=$null;
-        "auth_protocol"=$null;
-        "service_tenant_name"=$null;
-        "service_username"=$null;
-        "service_password"=$null;
+        "service_protocol" = $null
+        "service_port" = $null
+        "auth_host" = $null
+        "auth_port" = $null
+        "auth_protocol" = $null
+        "service_tenant_name" = $null
+        "service_username" = $null
+        "service_password" = $null
     }
 
     $optionalCtx = @{
-        "neutron_url"=$null;
-        "quantum_url"=$null;
-        "api_version"=$null;
+        "neutron_url" = $null
+        "quantum_url" = $null
     }
 
     $ctx = Get-JujuRelationContext -Relation 'cloud-compute' -RequiredContext $required -OptionalContext $optionalCtx
@@ -884,126 +542,141 @@ function Get-NeutronContext {
     if (!$ctx["neutron_url"]) {
         $ctx["neutron_url"] = $ctx["quantum_url"]
     }
-    if (!$ctx["api_version"] -or $ctx["api_version"] -eq 2) {
-        $ctx["api_version"] = "2.0"
-    }
 
     $ctx["neutron_auth_strategy"] = "keystone"
-    $ctx["log_dir"] = $logdir
-    $ctx["vmswitch_name"] = $switchName
     $ctx["neutron_admin_auth_uri"] = "{0}://{1}:{2}" -f @($ctx["service_protocol"], $ctx['auth_host'], $ctx['service_port'])
     $ctx["neutron_admin_auth_url"] = "{0}://{1}:{2}" -f @($ctx["auth_protocol"], $ctx['auth_host'], $ctx['auth_port'])
-    $ctx["local_ip"] = [string](Get-CharmState -Namespace "novahyperv" -Key "local_ip")
+
     return $ctx
 }
 
-function Get-GlanceContext {
-    Write-JujuLog "Getting glance context"
-    $rids = Get-JujuRelationIds -Relation 'image-service'
-    if (!$rids) {
+function Get-NeutronApiContext {
+    Write-JujuWarning "Generating context for neutron-api"
+
+    $required = @{
+        "overlay-network-type" = $null
+    }
+
+    $ctxt = Get-JujuRelationContext -Relation 'neutron-plugin-api' -RequiredContext $required
+    if(!$ctxt.Count) {
         return @{}
     }
 
-    $required = @{
-        "glance-api-server"=$null;
-    }
-    $ctx = Get-JujuRelationContext -Relation 'image-service' -RequiredContext $required -OptionalContext $optionalCtx
-    $new = @{}
-    foreach ($i in $ctx.Keys) {
-        $new[$i.Replace("-", "_")] = $ctx[$i]
-    }
-    return $new
-}
+    $ctxt["tunnel_types"] = $ctxt['overlay-network-type']
+    $ctxt["local_ip"] = Get-OVSLocalIP
 
-function Get-CharmConfigContext {
-    $config = Get-JujuCharmConfig
-    $asHash = @{}
-    foreach ($i in $config.GetEnumerator()) {
-        $name = $i.Key
-        if ($name -eq "instances-dir") {
-            continue
-        }
-        if ($i.Value.Gettype() -is [System.String]) {
-            $v = ($i.Value).Replace('/', '\')
-        } else {
-            $v = $i.Value
-        }
-        $asHash[$name.Replace("-", "_")] = $v 
-    }
-    [string]$ip = Get-JujuUnitPrivateIP
-    $asHash['my_ip'] = $ip 
-    return $asHash
+    return $ctxt
 }
 
 function Get-SystemContext {
-    $asHash = @{
-        "installDir" = $INSTALL_DIR;
-        "force_config_drive" = "False";
-        "config_drive_inject_password" = "False";
-        "config_drive_cdrom" = "False";
+    $release = Get-OpenstackVersion
+    $ctxt = @{
+        "install_dir" = "$NOVA_INSTALL_DIR"
+        "force_config_drive" = "False"
+        "config_drive_inject_password" = "False"
+        "config_drive_cdrom" = "False"
+        "vmswitch_name" = (Get-JujuVMSwitch).Name
+        "compute_driver" = $NOVA_PRODUCT[$release]['compute_driver']
+        "my_ip" = Get-JujuUnitPrivateIP
+        "lock_dir" = "$NOVA_DEFAULT_LOCK_DIR"
     }
-    if ((Get-IsNanoServer)) {
-        $asHash["force_config_drive"] = "True";
-        $asHash["config_drive_inject_password"] = "True";
-        $asHash["config_drive_cdrom"] = "True";
+
+    if(!(Test-Path -Path $ctxt['lock_dir'])) {
+        New-Item -ItemType Directory -Path $ctxt['lock_dir']
     }
-    return $asHash
+
+    if (Get-IsNanoServer) {
+        $ctxt["force_config_drive"] = "True"
+        $ctxt["config_drive_inject_password"] = "True"
+        $ctxt["config_drive_cdrom"] = "True"
+    }
+
+    return $ctxt
 }
 
-function Set-IncompleteStatusContext {
-    Param(
-        [array]$ContextSet=@(),
-        [array]$Incomplete=@()
+function Get-CharmConfigContext {
+    $ctxt = Get-ConfigContext
+
+    if(!$ctxt['log_dir']) {
+        $ctxt['log_dir'] = "$NOVA_DEFAULT_LOG_DIR"
+    }
+    if(!$ctxt['instances_dir']) {
+        $ctxt['instances_dir'] = "$NOVA_DEFAULT_INSTANCES_DIR"
+    }
+
+    foreach($dir in @($ctxt['log_dir'], $ctxt['instances_dir'])) {
+        if (!(Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir
+        }
+    }
+
+    return $ctxt
+}
+
+function Uninstall-Nova {
+    $productNames = $NOVA_PRODUCT[$SUPPORTED_OPENSTACK_RELEASES].Name
+    $productNames += $NOVA_PRODUCT['beta_name']
+
+    $installedProductName = $null
+    foreach($name in $productNames) {
+        if(Get-ComponentIsInstalled -Name $name -Exact) {
+            $installedProductName = $name
+            break
+        }
+    }
+
+    if($installedProductName) {
+        Write-JujuWarning "Uninstalling '$installedProductName'"
+        Uninstall-WindowsProduct -Name $installedProductName
+    }
+
+    $serviceNames = @(
+        $NOVA_COMPUTE_SERVICE_NAME,
+        $NEUTRON_HYPERV_AGENT_SERVICE_NAME,
+        $NEUTRON_OVS_AGENT_SERVICE_NAME
     )
-    $status = Get-JujuStatus -Full
-    $currentIncomplete = @()
-    if ($status["message"]) {
-        $msg = $status["message"].Split(":")
-        if ($msg.Count -ne 2) {
-            return
-        }
-        if ($msg[0] -eq "Incomplete contexts") {
-            $currentIncomplete = $msg[1].Split(", ")
-        }
+    Remove-WindowsServices -Names $serviceNames
+
+    if(Test-Path $NOVA_INSTALL_DIR) {
+        Remove-Item -Recurse -Force $NOVA_INSTALL_DIR
     }
-    $newIncomplete = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
-    if (!$Incomplete) {
-        foreach ($i in $currentIncomplete) {
-            if ($i -in $ContextSet) {
-                continue
-            }
-            $newIncomplete.Add($i)
-        }
-    } else {
-        foreach ($i in $currentIncomplete) {
-            if ($i -in $ContextSet -and !($i -in $Incomplete)) {
-                continue
-            } else {
-                $newIncomplete.Add($i)
-            }
-        }
-        foreach ($i in $Incomplete) {
-            if ($i -in $newIncomplete) {
-                continue
-            }
-            $newIncomplete.Add($i)
-        }
-    }
-    if ($newIncomplete) {
-        $msg = "Incomplete contexts: {0}" -f ($newIncomplete -Join ", ")
-        Set-JujuStatus -Status blocked -Message $msg
-    } else {
-        Set-JujuStatus -Status waiting -Message "Contexts are complete"
+
+    Remove-CharmState -Namespace "novahyperv" -Key "release_installed"
+}
+
+function Start-UpgradeOpenStackVersion {
+    $installedRelease = Get-CharmState -Namespace "novahyperv" -Key "release_installed"
+    $release = Get-OpenstackVersion
+    if($installedRelease -and ($installedRelease -ne $release)) {
+        Write-JujuWarning "Changing Nova Compute release from '$installedRelease' to '$release'"
+        Uninstall-Nova
+        Install-Nova
     }
 }
 
-function Start-InstallHook {
+function Set-HyperVUniqueMACAddressesPool {
+    $registryNamespace = "HKLM:\Software\Microsoft\Windows NT\CurrentVersion\Virtualization"
+
+    $randomBytes = @(
+        [byte](Get-Random -Minimum 0 -Maximum 255),
+        [byte](Get-Random -Minimum 0 -Maximum 255)
+    )
+
+    # Generate unique pool of MAC addresses
+    $minMacAddress = @(0x00, 0x15, 0x5D, $randomBytes[0], $randomBytes[1], 0x00)
+    Set-ItemProperty -Path $registryNamespace -Name "MinimumMacAddress" -Value ([byte[]]$minMacAddress)
+
+    $maxMacAddress = @(0x00, 0x15, 0x5D, $randomBytes[0], $randomBytes[1], 0xff)
+    Set-ItemProperty -Path $registryNamespace -Name "MaximumMacAddress" -Value ([byte[]]$maxMacAddress)
+}
+
+function Invoke-InstallHook {
     if (!(Get-IsNanoServer)) {
         try {
             Set-MpPreference -DisableRealtimeMonitoring $true
         } catch {
             # No need to error out the hook if this fails.
-            Write-JujuWarning "Failed to disable antivirus: $_"
+            Write-JujuWarning "Failed to disable real-time monitoring."
         }
     }
     # Set machine to use high performance settings.
@@ -1014,55 +687,172 @@ function Start-InstallHook {
         Write-JujuWarning "Failed to set power scheme."
     }
     Start-TimeResync
-    $netbiosName = Convert-JujuUnitNameToNetbios
-    $hostnameChanged = Get-CharmState -Namespace "Common" -Key "HostnameChanged"
-    $hostnameReboot = $false
-    $changeHostname = Get-JujuCharmConfig -Scope 'change-hostname'
-    if ($changeHostname -and !$hostnameChanged -and ($computername -ne $netbiosName)) {
-        Write-JujuWarning ("Changing computername from {0} to {1}" -f @($COMPUTERNAME, $netbiosName))
-        Rename-Computer -NewName $netbiosName
-        Set-CharmState -Namespace "Common" -Key "HostnameChanged" -Value $true
-        $hostnameReboot = $true
-    }
+
+    $renameReboot = Rename-JujuUnit
     $prereqReboot = Install-Prerequisites
-    if ($hostnameReboot -or $prereqReboot) {
+
+    if ($renameReboot -or $prereqReboot) {
         Invoke-JujuReboot -Now
     }
-    Import-CloudbaseCert
-    Start-ConfigureVMSwitch
-    $installerPath = Get-NovaInstaller
-    Install-Nova -InstallerPath $installerPath
-    Confirm-CharmPrerequisites
-    Start-ConfigureNeutronAgent
-    Enable-MSiSCSI
+
+    Set-HyperVUniqueMACAddressesPool
+
+    Install-Nova
 }
 
-function Start-ConfigChangedHook {
-    Start-ConfigureVMSwitch
-    Confirm-CharmPrerequisites
-    $adCtxt = Get-ActiveDirectoryContext
-    if ($adCtxt.Count) {
-        Enable-LiveMigration
+function Invoke-StopHook {
+    if(!(Get-IsNanoServer)) {
+        Disable-OVS
+        Uninstall-OVS
+        Remove-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info"
     }
 
-    $novaRestart = New-ConfigFile -ServiceName "nova"
-    if ($novaRestart) {
-        Write-JujuInfo "Restarting service Nova"
+    Uninstall-Nova
+
+    $vmSwitches = [array](Get-VMSwitch -SwitchType External -ErrorAction SilentlyContinue)
+    if($vmSwitches) {
+        $vmSwitches | Remove-VMSwitch -Force -Confirm:$false
+    }
+}
+
+function Invoke-ConfigChangedHook {
+    Start-UpgradeOpenStackVersion
+    New-CharmServices
+    Enable-MSiSCSI
+    Start-ConfigureNeutronAgent
+
+    $adCtxt = Get-ActiveDirectoryContext
+    if ($adCtxt.Count) {
+        if (Confirm-IsInDomain $adCtxt['domainName']) {
+            Enable-LiveMigration
+        }
+    }
+
+    $incompleteRelations = @()
+    $services = Get-CharmServices
+
+    $novaIncompleteRelations = New-ConfigFile -ContextGenerators $services['nova']['context_generators'] `
+                                              -Template $services['nova']['template'] `
+                                              -OutFile $services['nova']['config']
+    if(!$novaIncompleteRelations.Count) {
+        Write-JujuWarning "Restarting service Nova"
         Restart-Nova
+    } else {
+        $incompleteRelations += $novaIncompleteRelations
     }
 
     $netType = Get-NetType
-    if ($netType -eq "ovs") {
-        $neutronRestart = New-ConfigFile -ServiceName "neutron-ovs"
-    } else {
-        $neutronRestart = New-ConfigFile -ServiceName "neutron"
+    if ($netType -eq "hyperv") {
+        $contextGenerators = $services['neutron']['context_generators']
+        $template = $services['neutron']['template']
+        $configFile = $services['neutron']['config']
+    } elseif ($netType -eq "ovs") {
+        $contextGenerators = $services['neutron-ovs']['context_generators']
+        $template = $services['neutron-ovs']['template']
+        $configFile = $services['neutron-ovs']['config']
     }
-    if ($neutronRestart) {
-        Write-JujuInfo "Restarting service Neutron"
+    $neutronIncompleteRelations = New-ConfigFile -ContextGenerators $contextGenerators `
+                                                 -Template $template `
+                                                 -OutFile $configFile
+    if (!$neutronIncompleteRelations.Count) {
+        Write-JujuWarning "Restarting service Neutron"
         Restart-Neutron
+    } else {
+        $incompleteRelations += $neutronIncompleteRelations
     }
-    if ($novaRestart -and $neutronRestart) {
-        Open-CharmPorts
+
+    if (!$incompleteRelations) {
+        Open-Ports -Ports $NOVA_CHARM_PORTS | Out-Null
         Set-JujuStatus -Status active -Message "Unit is ready"
+    } else {
+        $incompleteRelations = $incompleteRelations | Select-Object -Unique
+        $msg = "Incomplete relations: {0}" -f @($incompleteRelations -join ', ')
+        Set-JujuStatus -Status blocked -Message $msg
+    }
+}
+
+function Invoke-FreeRDPRelationJoinedHook {
+    $adCtxt = Get-ActiveDirectoryContext
+    if($adCtxt["adcredentials"]) {
+        $relationSettings = @{}
+        $relationSettings['username'] = $adCtxt["adcredentials"][0]["username"]
+        $relationSettings['password'] = $adCtxt["adcredentials"][0]["password"]
+        $rids = Get-JujuRelationIds 'free-rdp'
+        foreach($rid in $rids) {
+            Set-JujuRelation -RelationId $rid -Settings $relationSettings
+        }
+    }
+}
+
+function Invoke-CinderAccountsRelationJoinedHook {
+    $adCtxt = Get-ActiveDirectoryContext
+    if(!$adCtxt.Count -or !$adCtxt['adcredentials']) {
+        Write-JujuWarning "AD context is not ready yet"
+        return
+    }
+
+    $cfg = Get-JujuCharmConfig
+    $adGroup = "{0}\{1}" -f @($adCtxt['netbiosname'], $cfg['ad-computer-group'])
+    $adUser = $adCtxt['adcredentials'][0]["username"]
+
+    $marshaledAccounts = Get-MarshaledObject -Object @($adGroup, $adUser)
+    $relationSettings = @{
+        'accounts' = $marshaledAccounts
+    }
+
+    $rids = Get-JujuRelationIds 'cinder-accounts'
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
+}
+
+function Invoke-LocalMonitorsRelationJoined {
+    $rids = Get-JujuRelationIds -Relation 'local-monitors'
+    if(!$rids) {
+        Write-JujuWarning "Relation 'local-monitors' is not established yet."
+        return
+    }
+
+    $novaService = Get-NovaServiceName
+    $neutronService = Get-NeutronServiceName
+    $monitors = @{
+        'monitors' = @{
+            'remote' = @{
+                'nrpe' = @{
+                    'hyper_v_health_ok_check' = @{
+                        'command' = "CheckCounter -a Counter=`"\\Hyper-V Virtual Machine Health Summary\\Health Ok`""
+                    }
+                    'hyper_v_health_critical_check' = @{
+                        'command' = "CheckCounter -a Counter=`"\\Hyper-V Virtual Machine Health Summary\\Health Critical`""
+                    }
+                    'hyper_v_logical_processors' = @{
+                        'command' = "CheckCounter -a Counter=`"\\Hyper-V Hypervisor\\Logical Processors`""
+                    }
+                    'hyper_v_virtual_processors' = @{
+                        'command' = "CheckCounter -a Counter=`"\\Hyper-V Hypervisor\\Virtual Processors`""
+                    }
+                    'nova_compute_service_status' = @{
+                        'command' = "check_service -a service=$novaService"
+                    }
+                    'neutron_service_status' = @{
+                        'command' = "check_service -a service=$neutronService"
+                    }
+                }
+            }
+        }
+    }
+
+    $switchName = (Get-JujuVMSwitch).Name
+    if($switchName) {
+        $monitors['monitors']['remote']['nrpe']['hyper_v_virtual_switch_packets_per_sec'] = @{
+            'command' = "CheckCounter -a Counter=`"\\Hyper-V Virtual Switch($switchName)\\Packets/sec`""
+        }
+    }
+
+    $settings = @{
+        'monitors' = Get-MarshaledObject $monitors
+    }
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $settings
     }
 }
