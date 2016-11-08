@@ -1,4 +1,4 @@
-# Copyright 2016 Cloudbase Solutions Srl
+# Copyright 2014-2016 Cloudbase Solutions Srl
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -31,7 +31,7 @@ ModuleVersion = '0.1'
 GUID = 'bf61935a-5ea8-4ebf-aedc-e4ff745b6346'
 
 # Author of this module
-Author = "Gabriel Adrian Samfira"
+Author = "Gabriel Adrian Samfira", "Ionut Madalin Balutoiu"
 
 # Company or vendor of this module
 CompanyName = 'Cloudbase Solutions SRL'
@@ -45,27 +45,17 @@ Description = 'Nova Hyper-V compute hooks'
 # Minimum version of the Windows PowerShell engine required by this module
 PowerShellVersion = '3.0'
 
-# Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(
-    "JujuHelper",
-    "JujuHooks",
-    "JujuUtils",
-    "JujuWindowsUtils",
-    "Networking")
-
 # Functions to export from this module
 FunctionsToExport = @(
-    "Start-ConfigChangedHook",
-    "Start-InstallHook",
+    "Get-NovaServiceName",
     "Restart-Nova",
     "Restart-Neutron",
-    "Stop-Neutron",
-    "Stop-Nova",
-    "Start-WSFCRelationJoinedHook",
-    'Start-ADJoinRelationChangedHook',
-    'Start-ADInfoRelationJoinedHook',
-    'Get-CharmServices',
-    'Get-NetType')
+    "Invoke-InstallHook",
+    "Invoke-StopHook",
+    "Invoke-ConfigChangedHook",
+    "Invoke-FreeRDPRelationJoinedHook",
+    "Invoke-CinderAccountsRelationJoinedHook",
+    "Invoke-LocalMonitorsRelationJoined")
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'

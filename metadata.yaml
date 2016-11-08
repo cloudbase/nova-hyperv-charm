@@ -1,17 +1,25 @@
 name: nova-hyperv
 summary: "OpenStack Hyper-V compute"
-maintainer: Gabriel Adrian Samfira <gsamfira@cloudbasesolutions.com>
+maintainers: [ "Gabriel Adrian Samfira <gsamfira@cloudbasesolutions.com>", "Ionut Balutoiu <ibalutoiu@cloudbasesolutions.com>" ]
 description: |
  OpenStack Compute, codenamed Nova, is a cloud computing fabric controller. In
  addition to its "native" API (the OpenStack API), it also supports the Amazon
  EC2 API.
 tags:
   - openstack
+  - windows
+series:
+  - win2012
+  - win2012r2
+  - win2012hv
+  - win2012hvr2
+  - win2016
+  - win2016nano
 provides:
   cloud-compute:
     interface: nova-compute
-  ad-info:
-    interface: ad-info
+  cinder-accounts:
+    interface: share-access
   local-monitors:
     interface: local-monitors
     scope: container
@@ -22,14 +30,13 @@ requires:
     interface: rabbitmq
   image-service:
     interface: glance
-  nova-ceilometer:
-    interface: nova-ceilometer
+  neutron-plugin-api:
+    interface: neutron-plugin-api
   ad-join:
     interface: ad-join
   failover-cluster:
     interface: failover-cluster
-peers:
-  compute-peer:
-    interface: nova
-  hyperv-peer:
-    interface: hyperv-peer
+  hgs:
+    interface: hgs
+  free-rdp:
+    interface: free-rdp

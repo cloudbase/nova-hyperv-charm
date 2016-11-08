@@ -126,8 +126,6 @@ function Invoke-FastWebRequest {
             $assembly = [System.Reflection.Assembly]::LoadWithPartialName("System.Net.Http")
         }
 
-        [Environment]::CurrentDirectory = (pwd).Path
-
         if(!$OutFile) {
             $OutFile = $Uri.PathAndQuery.Substring($Uri.PathAndQuery.LastIndexOf("/") + 1)
             if(!$OutFile) {
@@ -135,15 +133,31 @@ function Invoke-FastWebRequest {
             }
         }
 
-        $client = new-object System.Net.Http.HttpClient
-        $requestMessage = new-object System.Net.Http.HttpRequestMessage "HEAD", $Uri
-        $headRequest = $client.SendAsync($requestMessage)
-        $response = $headRequest.Result
-        $status = $response.EnsureSuccessStatusCode()
-        $contentLength = $response.Content.Headers.ContentLength
+        $fragment = $Uri.Fragment.Trim('#')
+        if ($fragment) {
+            $details = $fragment.Split("=")
+            $algorithm = $details[0]
+            $hash = $details[1]
+        }
 
+        if (!$SkipIntegrityCheck -and $fragment -and (Test-Path $OutFile)) {
+            try {
+                return (Test-FileIntegrity -File $OutFile -Algorithm $algorithm -ExpectedHash $hash)
+            } catch {
+                Remove-Item $OutFile
+            }
+        }
+
+        $client = new-object System.Net.Http.HttpClient
         $task = $client.GetStreamAsync($Uri)
         $response = $task.Result
+        if($task.IsFaulted) {
+            $msg = "Request for URL '{0}' is faulted.`nTask status: {1}.`n" -f @($Uri, $task.Status)
+            if($task.Exception) {
+                $msg += "Exception details: {0}" -f @($task.Exception)
+            }
+            Throw $msg
+        }
         $outStream = New-Object IO.FileStream $OutFile, Create, Write, None
 
         try {
@@ -152,29 +166,13 @@ function Invoke-FastWebRequest {
             while (($read = $response.Read($buffer, 0, $buffer.Length)) -gt 0) {
                 $totRead += $read
                 $outStream.Write($buffer, 0, $read);
-
-                if($contentLength){
-                    $percComplete = $totRead * 100 / $contentLength
-                    Write-Progress -Activity "Downloading: $Uri" -PercentComplete $percComplete
-                }
             }
         }
         finally {
             $outStream.Close()
         }
-        if(!$SkipIntegrityCheck) {
-            $fragment = $Uri.Fragment.Trim('#')
-            if (!$fragment){
-                return
-            }
-            $details = $fragment.Split("=")
-            $algorithm = $details[0]
-            $hash = $details[1]
-            if($algorithm -in @("SHA1", "SHA256", "SHA384", "SHA512", "MACTripleDES", "MD5", "RIPEMD160")){
-                Test-FileIntegrity -File $OutFile -Algorithm $algorithm -ExpectedHash $hash
-            } else {
-                Throw "Hash algorithm $algorithm not recognized."
-            }
+        if(!$SkipIntegrityCheck -and $fragment) {
+            Test-FileIntegrity -File $OutFile -Algorithm $algorithm -ExpectedHash $hash
         }
     }
 }
@@ -182,7 +180,7 @@ function Invoke-FastWebRequest {
 function Get-RandomString {
     <#
     .SYNOPSIS
-    Returns a random string of characters, suitable for passwords
+    Returns a random string of characters, with a minimum length of 6, suitable for passwords
     .PARAMETER Length
     length of the random string.
     .PARAMETER Weak
@@ -194,17 +192,33 @@ function Get-RandomString {
         [switch]$Weak=$false
     )
     PROCESS {
+        if($Length -lt 6) {
+            $Length = 6
+        }
         if(!$Weak) {
             $characters = 33..122
         }else {
             $characters = (48..57) + (65..90) + (97..122)
         }
-        $passwd = ""
+
+        $special = @(33, 35, 37, 38, 43, 45, 46)
+        $numeric = 48..57
+        $upper = 65..90
+        $lower = 97..122
+
+        $passwd = [System.Collections.Generic.List[object]](New-object "System.Collections.Generic.List[object]")
         for($i=0; $i -lt $Length; $i++){
-        $c = get-random -input $characters
-        $passwd += [char]$c
+            $c = get-random -input $characters
+            $passwd.Add([char]$c)
         }
-        return $passwd
+
+        $passwd.Add([char](get-random -input $numeric))
+        $passwd.Add([char](get-random -input $special))
+        $passwd.Add([char](get-random -input $upper))
+        $passwd.Add([char](get-random -input $lower))
+
+        $Random = New-Object Random
+        return [string]::join("",($passwd|sort {$Random.Next()}))
     }
 }
 

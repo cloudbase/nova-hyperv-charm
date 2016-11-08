@@ -15,7 +15,14 @@
 
 $ErrorActionPreference = "Stop"
 
-Import-Module ComputeHooks
+Import-Module JujuLogging
 
-Restart-Nova
-Restart-Neutron
+
+try {
+    Import-Module ComputeHooks
+
+    Invoke-FreeRDPRelationJoinedHook
+} catch {
+    Write-HookTracebackToLog $_
+    exit 1
+}
