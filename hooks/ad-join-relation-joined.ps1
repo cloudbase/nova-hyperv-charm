@@ -23,7 +23,7 @@ try {
     Import-Module JujuUtils
 
     $settings = @{
-        'computer-name' = $COMPUTERNAME
+        'computername' = [System.Net.Dns]::GetHostName()
     }
 
     $cfg = Get-JujuCharmConfig
@@ -32,11 +32,15 @@ try {
         $adUsers = @{
             $cfg['ad-user'] = @("Domain Admins", "Users")
         }
-        $settings['ad-users'] = Get-MarshaledObject $adUsers
+        $settings['users'] = Get-MarshaledObject $adUsers
     }
 
     if($cfg['ad-computer-group']) {
         $settings['computer-group'] = $cfg['ad-computer-group']
+    }
+
+    if($cfg['ad-ou']) {
+        $settings['ou-name'] = $cfg['ad-ou']
     }
 
     $rids = Get-JujuRelationIds -Relation "ad-join"
