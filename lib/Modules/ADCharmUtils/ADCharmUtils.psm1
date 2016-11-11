@@ -161,7 +161,7 @@ function Invoke-DJoin {
     Invoke-JujuCommand -Command $cmd
 
     $blobFile = Join-Path $env:TMP "djoin-blob.txt"
-    Write-FileFromBase64 -File $blobFile -Content $Params["djoin_blob"]
+    Write-FileFromBase64 -File $blobFile -Content $DJoinBlob
     $cmd = @("djoin.exe", "/requestODJ", "/loadfile", $blobFile, "/windowspath", $env:SystemRoot, "/localos")
     Invoke-JujuCommand -Command $cmd
     Invoke-JujuReboot -Now
@@ -172,12 +172,6 @@ function Start-JoinDomain {
     if (!$adCtxt.Count) {
         Write-JujuWarning "ad-join relation context is empty"
         return $false
-    }
-
-    $fqdn = (Get-CimInstance -ClassName Win32_ComputerSystem).Domain.ToLower()
-    if($fqdn -ne $adCtxt["domainName"]){
-        Throw ("We appear to be part of the wrong domain. " +
-               "Expected: {0}, We are in domain: {1}" -f @($adCtxt["domainName"], $fqdn))
     }
 
     if (!(Confirm-IsInDomain $adCtxt['domainName'])) {
@@ -212,4 +206,29 @@ function Rename-JujuUnit {
     }
 
     return $renameReboot
+}
+
+function Invoke-CommandAsADUser {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [ScriptBlock]$ScriptBlock,
+        [Parameter(Mandatory=$true)]
+        [String]$Domain,
+        [Parameter(Mandatory=$true)]
+        [String]$User,
+        [Parameter(Mandatory=$true)]
+        [String]$Password
+    )
+
+    Grant-Privilege -User $User -Grant "SeServiceLogonRight"
+
+    $domainUser = "{0}\{1}" -f @($Domain, $User)
+    $securePass = ConvertTo-SecureString $Password -AsPlainText -Force
+    $domainCredential = New-Object System.Management.Automation.PSCredential($domainUser, $securePass)
+
+    $exitCode = Start-ProcessAsUser -Command "$PShome\powershell.exe" -Arguments @("-Command", $ScriptBlock) `
+                                    -Credential $domainCredential -LoadUserProfile $false
+    if($exitCode) {
+        Throw "Failed to execute command as AD user. Exit code: $exitCode"
+    }
 }
