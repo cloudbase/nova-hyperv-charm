@@ -568,6 +568,18 @@ function Get-NeutronApiContext {
     return $ctxt
 }
 
+function Get-HGSContext {
+    $requiredCtxt = @{
+        'hgs-domain-name' = $null
+        'hgs-private-ip' = $null
+    }
+    $ctxt = Get-JujuRelationContext -Relation "hgs" -RequiredContext $requiredCtxt
+    if (!$ctxt) {
+        return @{}
+    }
+    return $ctxt
+}
+
 function Get-SystemContext {
     $release = Get-OpenstackVersion
     $ctxt = @{
@@ -854,5 +866,66 @@ function Invoke-LocalMonitorsRelationJoined {
     }
     foreach($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings $settings
+    }
+}
+
+function Invoke-HGSRelationJoined {
+    $adCtxt = Get-ActiveDirectoryContext
+    if(!$adCtxt.Count) {
+        Write-JujuWarning "AD context is not ready yet"
+        return
+    }
+
+    $domainUser = "{0}\{1}" -f @($adCtxt['domainName'], $adCtxt['username'])
+    $securePass = ConvertTo-SecureString $adCtxt['password'] -AsPlainText -Force
+    $adCredential = New-Object System.Management.Automation.PSCredential($domainUser, $securePass)
+    $session = New-CimSession -Credential $adCredential
+
+    $adGroupName = Get-JujuCharmConfig -Scope 'ad-computer-group'
+    $adGroup = Get-CimInstance -ClassName "Win32_Group" -Filter "Name='$adGroupName'" -CimSession $session
+    $relationSettings = @{
+        'ad-address' = $adCtxt['address']
+        'ad-domain-name' = $adCtxt['domainName']
+        'ad-user'= $adCtxt['username']
+        'ad-user-password' = $adCtxt['password']
+        'ad-group-sid' = $adGroup.SID
+    }
+
+    $rids = Get-JujuRelationIds -Relation 'hgs'
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
+}
+
+function Invoke-HGSRelationChanged {
+    $ctxt = Get-HGSContext
+    if(!$ctxt.Count) {
+        Write-JujuWarning "HGS context is not ready yet"
+        return
+    }
+
+    Write-JujuWarning "Installing required HGS features"
+    Install-WindowsFeatures -Features @('HostGuardian', 'RSAT-Shielded-VM-Tools', 'FabricShieldedTools')
+
+    $nameservers = Get-CharmState -Namespace "novahyperv" -Key "nameservers"
+    if(!$nameservers) {
+        # Save the current DNS nameservers before pointing the DNS to the HGS server
+        $nameservers = Get-PrimaryAdapterDNSServers
+        Set-CharmState -Namespace "novahyperv" -Key "nameservers" -Value $nameservers
+    }
+
+    Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses @($ctxt['hgs-private-ip'])
+
+    $domain = $ctxt['hgs-domain-name']
+    Set-HgsClientConfiguration -AttestationServerUrl "http://$domain/Attestation" `
+                               -KeyProtectionServerUrl "http://$domain/KeyProtection" -Confirm:$false
+}
+
+function Invoke-HGSRelationDeparted {
+    # Restore the DNS'es saved before pointing the DNS to the HGS server
+    $nameservers = Get-CharmState -Namespace "novahyperv" -Key "nameservers"
+    if($nameservers) {
+        Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses $nameservers
+        Remove-CharmState -Namespace "novahyperv" -Key "nameservers"
     }
 }

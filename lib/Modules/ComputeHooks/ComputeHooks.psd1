@@ -55,7 +55,10 @@ FunctionsToExport = @(
     "Invoke-ConfigChangedHook",
     "Invoke-FreeRDPRelationJoinedHook",
     "Invoke-CinderAccountsRelationJoinedHook",
-    "Invoke-LocalMonitorsRelationJoined")
+    "Invoke-LocalMonitorsRelationJoined",
+    "Invoke-HGSRelationJoined",
+    "Invoke-HGSRelationChanged",
+    "Invoke-HGSRelationDeparted")
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'

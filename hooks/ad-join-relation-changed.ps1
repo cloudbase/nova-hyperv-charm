@@ -49,6 +49,7 @@ try {
         Invoke-S2DRelationJoinedHook
         Invoke-FreeRDPRelationJoinedHook
         Invoke-CinderAccountsRelationJoinedHook
+        Invoke-HGSRelationJoined
         Invoke-ConfigChangedHook
     }
 } catch {
