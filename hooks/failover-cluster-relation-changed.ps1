@@ -19,7 +19,7 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module S2DCharmUtils
+    Import-Module ComputeHooks
 
     Invoke-S2DRelationJoinedHook
 } catch {

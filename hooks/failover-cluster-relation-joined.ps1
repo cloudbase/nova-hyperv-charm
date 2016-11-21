@@ -19,7 +19,7 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module WSFCCharmUtils
+    Import-Module ComputeHooks
 
     Invoke-WSFCRelationJoinedHook
 } catch {

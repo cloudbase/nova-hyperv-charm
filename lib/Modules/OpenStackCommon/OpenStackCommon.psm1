@@ -21,6 +21,7 @@ Import-Module JujuHelper
 
 
 $COMPUTERNAME = [System.Net.Dns]::GetHostName()
+$DEFAULT_OPENSTACK_VERSION = 'newton'
 $SUPPORTED_OPENSTACK_RELEASES = @('liberty', 'mitaka', 'newton')
 
 # Nova constants
@@ -109,7 +110,12 @@ $CINDER_PRODUCT = @{
     }
 }
 $CINDER_INSTALL_DIR = Join-Path ${env:SystemDrive} "OpenStack\Cinder"
-$CINDER_VALID_BACKENDS = @('iscsi', 'smb')
+$CINDER_ISCSI_BACKEND_NAME = 'iscsi'
+$CINDER_SMB_BACKEND_NAME = 'smb'
+$CINDER_VALID_BACKENDS = @($CINDER_ISCSI_BACKEND_NAME, $CINDER_SMB_BACKEND_NAME)
+$CINDER_VOLUME_SERVICE_NAME = "cinder-volume"
+$CINDER_VOLUME_ISCSI_SERVICE_NAME = "cinder-volume-iscsi"
+$CINDER_VOLUME_SMB_SERVICE_NAME = "cinder-volume-smb"
 $CINDER_DEFAULT_LOCK_DIR = Join-Path ${env:SystemDrive} "OpenStack\Lock"
 $CINDER_DEFAULT_ISCSI_LUN_DIR = Join-Path ${env:SystemDrive} "OpenStack\iSCSIVirtualDisks"
 $CINDER_DEFAULT_IMAGE_CONVERSION_DIR = Join-Path ${env:SystemDrive} "OpenStack\ImageConversionDir"
@@ -125,6 +131,18 @@ $NSCLIENT_DEFAULT_INSTALLER_URLS = @{
     'msi' = 'https://github.com/mickem/nscp/releases/download/0.5.0.62/NSCP-0.5.0.62-x64.msi#md5=74a460dedbd98659b8bad24aa91fc29c'
     'zip' = 'https://github.com/mickem/nscp/releases/download/0.5.0.62/nscp-0.5.0.62-x64.zip#md5=a766dfdb5d9452b3a7d1aec02ce89106'
 }
+
+# FreeRDP constants
+$FREE_RDP_INSTALL_DIR = Join-Path ${env:ProgramFiles(x86)} "Cloudbase Solutions\FreeRDP-WebConnect"
+$FREE_RDP_VCREDIST = 'https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe'
+$FREE_RDP_INSTALLER = @{
+    'msi' = 'https://www.cloudbase.it/downloads/FreeRDPWebConnect.msi'
+    'zip' = 'https://cloudbase.it/downloads/FreeRDPWebConnect_Beta.zip'
+}
+$FREE_RDP_DOCUMENT_ROOT = Join-Path $FREE_RDP_INSTALL_DIR "WebRoot"
+$FREE_RDP_CERT_FILE = Join-Path $FREE_RDP_INSTALL_DIR "etc\server.cer"
+$FREE_RDP_SERVICE_NAME = "wsgate"
+$FREE_RDP_PRODUCT_NAME = "FreeRDP-WebConnect"
 
 function Get-PythonDir {
     <#
@@ -232,6 +250,10 @@ function New-ConfigFile {
 
 function Get-OpenstackVersion {
     $cfg = Get-JujuCharmConfig
+
+    if(!$cfg['openstack-version']) {
+        return $DEFAULT_OPENSTACK_VERSION
+    }
 
     if($cfg['openstack-version'] -notin $SUPPORTED_OPENSTACK_RELEASES) {
         Throw ("'{0}' is not a supported OpenStack release." -f @($cfg['openstack-version']))
@@ -587,34 +609,6 @@ function Uninstall-WindowsProduct {
 
     if($result.ReturnValue) {
         Throw "Failed to uninstall product '$Name'"
-    }
-}
-
-function Invoke-AMQPRelationJoinedHook {
-    $username, $vhost = Get-RabbitMQConfig
-
-    $relationSettings = @{
-        'username' = $username
-        'vhost' = $vhost
-    }
-
-    $rids = Get-JujuRelationIds -Relation "amqp"
-    foreach ($rid in $rids){
-        Set-JujuRelation -RelationId $rid -Settings $relationSettings
-    }
-}
-
-function Invoke-MySQLDBRelationJoinedHook {
-    $database, $databaseUser = Get-MySQLConfig
-
-    $settings = @{
-        'database' = $database
-        'username' = $databaseUser
-        'hostname' = Get-JujuUnitPrivateIP
-    }
-    $rids = Get-JujuRelationIds 'mysql-db'
-    foreach ($r in $rids) {
-        Set-JujuRelation -Settings $settings -RelationId $r
     }
 }
 

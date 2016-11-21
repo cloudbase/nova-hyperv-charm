@@ -22,6 +22,7 @@ Import-Module JujuHelper
 Import-Module S2DCharmUtils
 Import-Module ADCharmUtils
 Import-Module OpenStackCommon
+Import-Module WSFCCharmUtils
 
 
 function Install-Prerequisites {
@@ -262,7 +263,9 @@ function Enable-LiveMigration {
         $networkAddress = Get-NetworkAddress -IPAddress $netAddress.IPAddress -SubnetMask $netmask
         $migrationNet = Get-VMMigrationNetwork | Where-Object { $_.Subnet -eq "$networkAddress/$prefixLength" }
         if (!$migrationNet) {
-            Add-VMMigrationNetwork -Subnet "$networkAddress/$prefixLength" -Confirm:$false
+            Start-ExecuteWithRetry -ScriptBlock {
+                Add-VMMigrationNetwork -Subnet "$networkAddress/$prefixLength" -Confirm:$false
+            } -RetryMessage "Failed to add VM migration networking. Retrying"
         }
     }
 }
@@ -927,5 +930,72 @@ function Invoke-HGSRelationDeparted {
     if($nameservers) {
         Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses $nameservers
         Remove-CharmState -Namespace "novahyperv" -Key "nameservers"
+    }
+}
+
+function Invoke-AMQPRelationJoinedHook {
+    $username, $vhost = Get-RabbitMQConfig
+
+    $relationSettings = @{
+        'username' = $username
+        'vhost' = $vhost
+    }
+
+    $rids = Get-JujuRelationIds -Relation "amqp"
+    foreach ($rid in $rids){
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
+}
+
+function Invoke-MySQLDBRelationJoinedHook {
+    $database, $databaseUser = Get-MySQLConfig
+
+    $settings = @{
+        'database' = $database
+        'username' = $databaseUser
+        'hostname' = Get-JujuUnitPrivateIP
+    }
+    $rids = Get-JujuRelationIds 'mysql-db'
+    foreach ($r in $rids) {
+        Set-JujuRelation -Settings $settings -RelationId $r
+    }
+}
+
+function Invoke-WSFCRelationJoinedHook {
+    $ctx = Get-ActiveDirectoryContext
+    if(!$ctx.Count -or !(Confirm-IsInDomain $ctx["domainName"])) {
+        Set-ClusterableStatus -Ready $false -Relation "failover-cluster"
+        return
+    }
+
+    if (Get-IsNanoServer) {
+        $features = @('FailoverCluster-NanoServer')
+    } else {
+        $features = @('Failover-Clustering', 'File-Services')
+    }
+    Install-WindowsFeatures -Features $features
+    Set-ClusterableStatus -Ready $true -Relation "failover-cluster"
+}
+
+function Invoke-S2DRelationJoinedHook {
+    $adCtxt = Get-ActiveDirectoryContext
+    if (!$adCtxt.Count) {
+        Write-JujuWarning "Delaying the S2D relation joined hook until AD context is ready"
+        return
+    }
+    $wsfcCtxt = Get-WSFCContext
+    if (!$wsfcCtxt.Count) {
+        Write-JujuWarning "Delaying the S2D relation joined hook until WSFC context is ready"
+        return
+    }
+    $settings = @{
+        'ready' = $true
+        'computername' = $COMPUTERNAME
+        'cluster-name' = $wsfcCtxt['cluster-name']
+        'cluster-ip' = $wsfcCtxt['cluster-ip']
+    }
+    $rids = Get-JujuRelationIds -Relation 's2d'
+    foreach ($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $settings
     }
 }

@@ -22,7 +22,6 @@ try {
     Import-Module ADCharmUtils
     Import-Module ComputeHooks
     Import-Module JujuWindowsUtils
-    Import-Module WSFCCharmUtils
     Import-Module S2DCharmUtils
     Import-Module JujuUtils
 
