@@ -786,19 +786,6 @@ function Invoke-ConfigChangedHook {
     }
 }
 
-function Invoke-FreeRDPRelationJoinedHook {
-    $adCtxt = Get-ActiveDirectoryContext
-    if($adCtxt["adcredentials"]) {
-        $relationSettings = @{}
-        $relationSettings['username'] = $adCtxt["adcredentials"][0]["username"]
-        $relationSettings['password'] = $adCtxt["adcredentials"][0]["password"]
-        $rids = Get-JujuRelationIds 'free-rdp'
-        foreach($rid in $rids) {
-            Set-JujuRelation -RelationId $rid -Settings $relationSettings
-        }
-    }
-}
-
 function Invoke-CinderAccountsRelationJoinedHook {
     $adCtxt = Get-ActiveDirectoryContext
     if(!$adCtxt.Count -or !$adCtxt['adcredentials']) {

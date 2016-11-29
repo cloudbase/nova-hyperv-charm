@@ -53,7 +53,6 @@ FunctionsToExport = @(
     "Invoke-InstallHook",
     "Invoke-StopHook",
     "Invoke-ConfigChangedHook",
-    "Invoke-FreeRDPRelationJoinedHook",
     "Invoke-CinderAccountsRelationJoinedHook",
     "Invoke-LocalMonitorsRelationJoined",
     "Invoke-HGSRelationJoined",
