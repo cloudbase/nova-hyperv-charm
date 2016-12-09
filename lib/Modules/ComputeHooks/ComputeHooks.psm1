@@ -22,6 +22,7 @@ Import-Module JujuHelper
 Import-Module S2DCharmUtils
 Import-Module ADCharmUtils
 Import-Module OpenStackCommon
+Import-Module WSFCCharmUtils
 
 
 function Install-Prerequisites {
@@ -262,7 +263,9 @@ function Enable-LiveMigration {
         $networkAddress = Get-NetworkAddress -IPAddress $netAddress.IPAddress -SubnetMask $netmask
         $migrationNet = Get-VMMigrationNetwork | Where-Object { $_.Subnet -eq "$networkAddress/$prefixLength" }
         if (!$migrationNet) {
-            Add-VMMigrationNetwork -Subnet "$networkAddress/$prefixLength" -Confirm:$false
+            Start-ExecuteWithRetry -ScriptBlock {
+                Add-VMMigrationNetwork -Subnet "$networkAddress/$prefixLength" -Confirm:$false
+            } -RetryMessage "Failed to add VM migration networking. Retrying"
         }
     }
 }
@@ -568,6 +571,18 @@ function Get-NeutronApiContext {
     return $ctxt
 }
 
+function Get-HGSContext {
+    $requiredCtxt = @{
+        'hgs-domain-name' = $null
+        'hgs-private-ip' = $null
+    }
+    $ctxt = Get-JujuRelationContext -Relation "hgs" -RequiredContext $requiredCtxt
+    if (!$ctxt) {
+        return @{}
+    }
+    return $ctxt
+}
+
 function Get-SystemContext {
     $release = Get-OpenstackVersion
     $ctxt = @{
@@ -771,19 +786,6 @@ function Invoke-ConfigChangedHook {
     }
 }
 
-function Invoke-FreeRDPRelationJoinedHook {
-    $adCtxt = Get-ActiveDirectoryContext
-    if($adCtxt["adcredentials"]) {
-        $relationSettings = @{}
-        $relationSettings['username'] = $adCtxt["adcredentials"][0]["username"]
-        $relationSettings['password'] = $adCtxt["adcredentials"][0]["password"]
-        $rids = Get-JujuRelationIds 'free-rdp'
-        foreach($rid in $rids) {
-            Set-JujuRelation -RelationId $rid -Settings $relationSettings
-        }
-    }
-}
-
 function Invoke-CinderAccountsRelationJoinedHook {
     $adCtxt = Get-ActiveDirectoryContext
     if(!$adCtxt.Count -or !$adCtxt['adcredentials']) {
@@ -853,6 +855,134 @@ function Invoke-LocalMonitorsRelationJoined {
         'monitors' = Get-MarshaledObject $monitors
     }
     foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $settings
+    }
+}
+
+function Invoke-HGSRelationJoined {
+    $adCtxt = Get-ActiveDirectoryContext
+    if(!$adCtxt.Count) {
+        Write-JujuWarning "AD context is not ready yet"
+        return
+    }
+
+    $domainUser = "{0}\{1}" -f @($adCtxt['domainName'], $adCtxt['username'])
+    $securePass = ConvertTo-SecureString $adCtxt['password'] -AsPlainText -Force
+    $adCredential = New-Object System.Management.Automation.PSCredential($domainUser, $securePass)
+    $session = New-CimSession -Credential $adCredential
+
+    $adGroupName = Get-JujuCharmConfig -Scope 'ad-computer-group'
+    $adGroup = Get-CimInstance -ClassName "Win32_Group" -Filter "Name='$adGroupName'" -CimSession $session
+    $relationSettings = @{
+        'ad-address' = $adCtxt['address']
+        'ad-domain-name' = $adCtxt['domainName']
+        'ad-user'= $adCtxt['username']
+        'ad-user-password' = $adCtxt['password']
+        'ad-group-sid' = $adGroup.SID
+    }
+
+    $rids = Get-JujuRelationIds -Relation 'hgs'
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
+}
+
+function Invoke-HGSRelationChanged {
+    $ctxt = Get-HGSContext
+    if(!$ctxt.Count) {
+        Write-JujuWarning "HGS context is not ready yet"
+        return
+    }
+
+    Write-JujuWarning "Installing required HGS features"
+    Install-WindowsFeatures -Features @('HostGuardian', 'RSAT-Shielded-VM-Tools', 'FabricShieldedTools')
+
+    $nameservers = Get-CharmState -Namespace "novahyperv" -Key "nameservers"
+    if(!$nameservers) {
+        # Save the current DNS nameservers before pointing the DNS to the HGS server
+        $nameservers = Get-PrimaryAdapterDNSServers
+        Set-CharmState -Namespace "novahyperv" -Key "nameservers" -Value $nameservers
+    }
+
+    Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses @($ctxt['hgs-private-ip'])
+
+    $domain = $ctxt['hgs-domain-name']
+    Set-HgsClientConfiguration -AttestationServerUrl "http://$domain/Attestation" `
+                               -KeyProtectionServerUrl "http://$domain/KeyProtection" -Confirm:$false
+}
+
+function Invoke-HGSRelationDeparted {
+    # Restore the DNS'es saved before pointing the DNS to the HGS server
+    $nameservers = Get-CharmState -Namespace "novahyperv" -Key "nameservers"
+    if($nameservers) {
+        Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses $nameservers
+        Remove-CharmState -Namespace "novahyperv" -Key "nameservers"
+    }
+}
+
+function Invoke-AMQPRelationJoinedHook {
+    $username, $vhost = Get-RabbitMQConfig
+
+    $relationSettings = @{
+        'username' = $username
+        'vhost' = $vhost
+    }
+
+    $rids = Get-JujuRelationIds -Relation "amqp"
+    foreach ($rid in $rids){
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
+    }
+}
+
+function Invoke-MySQLDBRelationJoinedHook {
+    $database, $databaseUser = Get-MySQLConfig
+
+    $settings = @{
+        'database' = $database
+        'username' = $databaseUser
+        'hostname' = Get-JujuUnitPrivateIP
+    }
+    $rids = Get-JujuRelationIds 'mysql-db'
+    foreach ($r in $rids) {
+        Set-JujuRelation -Settings $settings -RelationId $r
+    }
+}
+
+function Invoke-WSFCRelationJoinedHook {
+    $ctx = Get-ActiveDirectoryContext
+    if(!$ctx.Count -or !(Confirm-IsInDomain $ctx["domainName"])) {
+        Set-ClusterableStatus -Ready $false -Relation "failover-cluster"
+        return
+    }
+
+    if (Get-IsNanoServer) {
+        $features = @('FailoverCluster-NanoServer')
+    } else {
+        $features = @('Failover-Clustering', 'File-Services')
+    }
+    Install-WindowsFeatures -Features $features
+    Set-ClusterableStatus -Ready $true -Relation "failover-cluster"
+}
+
+function Invoke-S2DRelationJoinedHook {
+    $adCtxt = Get-ActiveDirectoryContext
+    if (!$adCtxt.Count) {
+        Write-JujuWarning "Delaying the S2D relation joined hook until AD context is ready"
+        return
+    }
+    $wsfcCtxt = Get-WSFCContext
+    if (!$wsfcCtxt.Count) {
+        Write-JujuWarning "Delaying the S2D relation joined hook until WSFC context is ready"
+        return
+    }
+    $settings = @{
+        'ready' = $true
+        'computername' = $COMPUTERNAME
+        'cluster-name' = $wsfcCtxt['cluster-name']
+        'cluster-ip' = $wsfcCtxt['cluster-ip']
+    }
+    $rids = Get-JujuRelationIds -Relation 's2d'
+    foreach ($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings $settings
     }
 }

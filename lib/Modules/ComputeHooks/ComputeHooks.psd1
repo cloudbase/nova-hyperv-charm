@@ -53,9 +53,15 @@ FunctionsToExport = @(
     "Invoke-InstallHook",
     "Invoke-StopHook",
     "Invoke-ConfigChangedHook",
-    "Invoke-FreeRDPRelationJoinedHook",
     "Invoke-CinderAccountsRelationJoinedHook",
-    "Invoke-LocalMonitorsRelationJoined")
+    "Invoke-LocalMonitorsRelationJoined",
+    "Invoke-HGSRelationJoined",
+    "Invoke-HGSRelationChanged",
+    "Invoke-HGSRelationDeparted",
+    "Invoke-AMQPRelationJoinedHook",
+    "Invoke-MySQLDBRelationJoinedHook",
+    "Invoke-WSFCRelationJoinedHook",
+    "Invoke-S2DRelationJoinedHook")
 
 # Cmdlets to export from this module
 CmdletsToExport = '*'

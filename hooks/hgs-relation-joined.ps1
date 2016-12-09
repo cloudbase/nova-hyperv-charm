@@ -21,7 +21,7 @@ Import-Module JujuLogging
 try {
     Import-Module ComputeHooks
 
-    Invoke-HGSRelationChanged
+    Invoke-HGSRelationJoined
 } catch {
     Write-HookTracebackToLog $_
     exit 1

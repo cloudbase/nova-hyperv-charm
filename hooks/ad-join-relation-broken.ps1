@@ -1,4 +1,4 @@
-# Copyright 2016 Cloudbase Solutions Srl
+# Copyright 2014-2016 Cloudbase Solutions Srl
 #
 #    Licensed under the Apache License, Version 2.0 (the "License"); you may
 #    not use this file except in compliance with the License. You may obtain
@@ -19,9 +19,19 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module ComputeHooks
+    Import-Module ADCharmUtils
 
-    Invoke-FreeRDPRelationJoinedHook
+    $adCtxt = Get-ActiveDirectoryContext
+    if(!$adCtxt.Count) {
+        # TODO(ibalutoiu):
+        # This means that AD relation was removed and we need to set the
+        # computer domain to default 'WORKGROUP' and do a computer reboot.
+        Write-JujuWarning "AD context is empty"
+        exit 0
+    }
+
+    Set-DnsClientServerAddress -InterfaceAlias * -ServerAddresses $adCtxt['address']
+    Invoke-JujuCommand -Command @("ipconfig", "/flushdns")
 } catch {
     Write-HookTracebackToLog $_
     exit 1

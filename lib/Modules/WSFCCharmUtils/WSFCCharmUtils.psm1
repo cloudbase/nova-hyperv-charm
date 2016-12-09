@@ -57,19 +57,3 @@ function Set-ClusterableStatus {
         Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
 }
-
-function Invoke-WSFCRelationJoinedHook {
-    $ctx = Get-ActiveDirectoryContext
-    if(!$ctx.Count -or !(Confirm-IsInDomain $ctx["domainName"])) {
-        Set-ClusterableStatus -Ready $false -Relation "failover-cluster"
-        return
-    }
-
-    if (Get-IsNanoServer) {
-        $features = @('FailoverCluster-NanoServer')
-    } else {
-        $features = @('Failover-Clustering', 'File-Services')
-    }
-    Install-WindowsFeatures -Features $features
-    Set-ClusterableStatus -Ready $true -Relation "failover-cluster"
-}

@@ -57,26 +57,3 @@ function Clear-ExtraDisks {
         }
     }
 }
-
-function Invoke-S2DRelationJoinedHook {
-    $adCtxt = Get-ActiveDirectoryContext
-    if (!$adCtxt.Count) {
-        Write-JujuWarning "Delaying the S2D relation joined hook until AD context is ready"
-        return
-    }
-    $wsfcCtxt = Get-WSFCContext
-    if (!$wsfcCtxt.Count) {
-        Write-JujuWarning "Delaying the S2D relation joined hook until WSFC context is ready"
-        return
-    }
-    $settings = @{
-        'ready' = $true
-        'computername' = $COMPUTERNAME
-        'cluster-name' = $wsfcCtxt['cluster-name']
-        'cluster-ip' = $wsfcCtxt['cluster-ip']
-    }
-    $rids = Get-JujuRelationIds -Relation 's2d'
-    foreach ($rid in $rids) {
-        Set-JujuRelation -RelationId $rid -Settings $settings
-    }
-}

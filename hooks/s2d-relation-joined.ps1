@@ -19,7 +19,7 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module S2DCharmUtils
+    Import-Module ComputeHooks
 
     # NOTE(ibalutoiu):
     # The system PowerShell modules should be already part of the environment

@@ -19,7 +19,7 @@ Import-Module JujuLogging
 
 
 try {
-    Import-Module OpenStackCommon
+    Import-Module ComputeHooks
 
     Invoke-AMQPRelationJoinedHook
 } catch {

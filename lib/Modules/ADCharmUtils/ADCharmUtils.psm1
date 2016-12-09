@@ -148,17 +148,10 @@ function Get-ActiveDirectoryContext {
 function Invoke-DJoin {
     Param(
         [Parameter(Mandatory=$true)]
-        [String]$DCAddress,
-        [Parameter(Mandatory=$true)]
         [String]$DJoinBlob
     )
 
     Write-JujuWarning "Started join domain"
-
-    $networkName = (Get-MainNetadapter)
-    Set-DnsClientServerAddress -InterfaceAlias $networkName -ServerAddresses $DCAddress
-    $cmd = @("ipconfig", "/flushdns")
-    Invoke-JujuCommand -Command $cmd
 
     $blobFile = Join-Path $env:TMP "djoin-blob.txt"
     Write-FileFromBase64 -File $blobFile -Content $DJoinBlob
@@ -174,11 +167,14 @@ function Start-JoinDomain {
         return $false
     }
 
+    Set-DnsClientServerAddress -InterfaceAlias * -ServerAddresses $adCtxt['address']
+    Invoke-JujuCommand -Command @("ipconfig", "/flushdns")
+
     if (!(Confirm-IsInDomain $adCtxt['domainName'])) {
         if (!$adCtxt["djoin_blob"] -and $adCtxt["already-joined-$COMPUTERNAME"]) {
             Throw "The domain controller reports that a computer with the same hostname as this unit is already added to the domain, and we did not get any domain join information."
         }
-        Invoke-DJoin -DCAddress $adCtxt['address'] -DJoinBlob $adCtxt['djoin_blob']
+        Invoke-DJoin -DJoinBlob $adCtxt['djoin_blob']
     }
 
     return $true
