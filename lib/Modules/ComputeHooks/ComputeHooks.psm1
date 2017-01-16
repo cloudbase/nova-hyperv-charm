@@ -573,8 +573,9 @@ function Get-NeutronApiContext {
 
 function Get-HGSContext {
     $requiredCtxt = @{
+        'private-address' = $null
         'hgs-domain-name' = $null
-        'hgs-private-ip' = $null
+        'hgs-service-name' = $null
     }
     $ctxt = Get-JujuRelationContext -Relation "hgs" -RequiredContext $requiredCtxt
     if (!$ctxt) {
@@ -904,18 +905,18 @@ function Invoke-HGSRelationChanged {
         Set-CharmState -Namespace "novahyperv" -Key "nameservers" -Value $nameservers
     }
 
-    Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses @($ctxt['hgs-private-ip'])
+    Set-DnsClientServerAddress -InterfaceAlias * -Addresses @($ctxt['private-address'])
 
-    $domain = $ctxt['hgs-domain-name']
-    Set-HgsClientConfiguration -AttestationServerUrl "http://$domain/Attestation" `
-                               -KeyProtectionServerUrl "http://$domain/KeyProtection" -Confirm:$false
+    $hgsAddress = "{0}.{1}" -f @($ctxt['hgs-service-name'], $ctxt['hgs-domain-name'])
+    Set-HgsClientConfiguration -AttestationServerUrl "http://$hgsAddress/Attestation" `
+                               -KeyProtectionServerUrl "http://$hgsAddress/KeyProtection" -Confirm:$false
 }
 
 function Invoke-HGSRelationDeparted {
     # Restore the DNS'es saved before pointing the DNS to the HGS server
     $nameservers = Get-CharmState -Namespace "novahyperv" -Key "nameservers"
     if($nameservers) {
-        Set-DnsClientServerAddress -InterfaceAlias (Get-MainNetadapter) -Addresses $nameservers
+        Set-DnsClientServerAddress -InterfaceAlias * -Addresses $nameservers
         Remove-CharmState -Namespace "novahyperv" -Key "nameservers"
     }
 }
