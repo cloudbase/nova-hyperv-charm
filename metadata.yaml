@@ -26,6 +26,8 @@ provides:
 requires:
   s2d:
     interface: s2d
+  csv:
+    interface: csv
   amqp:
     interface: rabbitmq
   image-service:

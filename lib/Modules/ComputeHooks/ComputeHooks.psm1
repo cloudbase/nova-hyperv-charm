@@ -374,16 +374,6 @@ function Get-CharmServices {
                     "generator" = (Get-Item "function:Get-SystemContext").ScriptBlock
                     "relation" = "system"
                     "mandatory" = $true
-                },
-                @{
-                    "generator" = (Get-Item "function:Get-S2DContext").ScriptBlock
-                    "relation" = "s2d"
-                    "mandatory" = $false
-                },
-                @{
-                    "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
-                    "relation" = "free-rdp"
-                    "mandatory" = $false
                 }
             )
         }
@@ -446,6 +436,24 @@ function Get-CharmServices {
         }
     }
 
+    $s2dContextGen = @{
+        "generator" = (Get-Item "function:Get-S2DCSVContext").ScriptBlock
+        "relation" = "csv"
+        "mandatory" = $false
+    }
+    if((Confirm-JujuRelationCreated -Relation 'csv')) {
+        $s2dContextGen['mandatory'] = $true
+    }
+    $freeRdpContextGen = @{
+        "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
+        "relation" = "free-rdp"
+        "mandatory" = $false
+    }
+    if((Confirm-JujuRelationCreated -Relation 'free-rdp')) {
+        $freeRdpContextGen['mandatory'] = $true
+    }
+    $jujuCharmServices['nova']['context_generators'] += @($s2dContextGen, $freeRdpContextGen)
+
     return $jujuCharmServices
 }
 
@@ -465,41 +473,45 @@ function Get-FreeRDPContext {
     return $ctx
 }
 
-function Get-S2DContext {
-    Write-JujuWarning "Generating context for S2D"
+function Get-S2DVolumeName {
+    $volumeName = (Get-JujuLocalUnit) -replace '/', '-'
+    return $volumeName
+}
 
+function Get-S2DCSVContext {
+    Write-JujuWarning "Generating context for S2D CSV"
     $version = Get-OpenstackVersion
     if (!$NOVA_PRODUCT[$version]['compute_cluster_driver']) {
         Write-JujuWarning "Hyper-V Cluster driver is not supported for release '$version'"
         return @{}
     }
-
     $required = @{
-        "volume-path" = $null
+        "csv-paths" = $null
     }
-    $s2dCtxt = Get-JujuRelationContext -Relation "s2d" -RequiredContext $required
+    $s2dCtxt = Get-JujuRelationContext -Relation "csv" -RequiredContext $required
     if(!$s2dCtxt.Count) {
         return @{}
     }
-
-    $volumePath = $s2dCtxt['volume-path']
-    if (!(Test-Path $volumePath)) {
-        Write-JujuWarning "Relation information states that an s2d volume should be present, but could not be found locally."
+    $s2dCtxt['csv-paths'] = Get-UnmarshaledObject $s2dCtxt['csv-paths']
+    $volumeName = Get-S2DVolumeName
+    $volumePath = $s2dCtxt['csv-paths'][$volumeName]
+    if(!$volumePath) {
         return @{}
     }
-
+    if (!(Test-Path $volumePath)) {
+        Write-JujuWarning "Relation information states that an s2d csv volume should be present, but could not be found locally."
+        return @{}
+    }
     $cfg = Get-JujuCharmConfig
     if(!$cfg['enable-cluster-driver']) {
-        Write-JujuWarning "S2D context is ready but cluster driver is disabled"
+        Write-JujuWarning "S2D CSV context is ready but cluster driver is disabled"
         return @{}
     }
-
     [string]$instancesClusterDir = Join-Path $volumePath "Instances"
     $ctxt = @{
         "instances_cluster_dir" = $instancesClusterDir
         "compute_cluster_driver" = $NOVA_PRODUCT[$version]['compute_cluster_driver']
     }
-
     # Catch any IO error from mkdir, on the count that being a clustered storage
     # another node might create the folder between the time we Test-Path and
     # the time we execute mkdir. Test again in case of IO exception.
@@ -512,7 +524,6 @@ function Get-S2DContext {
             Throw $_
         }
     }
-
     return $ctxt
 }
 
@@ -703,16 +714,11 @@ function Invoke-InstallHook {
         Write-JujuWarning "Failed to set power scheme."
     }
     Start-TimeResync
-
-    $renameReboot = Rename-JujuUnit
     $prereqReboot = Install-Prerequisites
-
-    if ($renameReboot -or $prereqReboot) {
+    if ($prereqReboot) {
         Invoke-JujuReboot -Now
     }
-
     Set-HyperVUniqueMACAddressesPool
-
     Install-Nova
 }
 
@@ -978,12 +984,58 @@ function Invoke-S2DRelationJoinedHook {
     }
     $settings = @{
         'ready' = $true
-        'computername' = $COMPUTERNAME
+        'computername' = $env:COMPUTERNAME
         'cluster-name' = $wsfcCtxt['cluster-name']
         'cluster-ip' = $wsfcCtxt['cluster-ip']
     }
     $rids = Get-JujuRelationIds -Relation 's2d'
     foreach ($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings $settings
+    }
+}
+
+function Invoke-CSVRelationJoinedHook {
+    $rids = Get-JujuRelationIds -Relation 'csv'
+    if(!$rids) {
+        Write-JujuWarning "Relation 'csv' is not established yet."
+        return
+    }
+    $cfg = Get-JujuCharmConfig
+    if(!$cfg['csv-performance-size'] -and !$cfg['csv-capacity-size']) {
+        Write-JujuWarning "Neither of the config options csv-performance-size or csv-capacity-size was specifed"
+        Set-JujuStatus -Status 'blocked' -Message 'CSV relation established, but csv was not configured'
+        return
+    }
+    # Validate storage sizes and convert size from friendly format to bytes
+    $csvConfig = @{}
+    if($cfg['csv-performance-size']) {
+        $csvConfig['performance-tier-size'] = $cfg['csv-performance-size']
+    }
+    if($cfg['csv-capacity-size']) {
+        $csvConfig['capacity-tier-size'] = $cfg['csv-capacity-size']
+    }
+    $relationSettings = @{
+        'volume-name' = Get-S2DVolumeName
+    }
+    foreach($t in $csvConfig.Keys) {
+        $size = $csvConfig[$t]
+        if($size -cmatch '^[0-9]+(K|M|G|T){1}B$') {
+            # This is a friendly format size
+            $relationSettings[$t] = Invoke-Expression $size
+            continue
+        }
+        $uint64Size = $size -as [UInt64]
+        if ($uint64Size) {
+            # In case the config is an UInt64. This will be considered the value in bytes.
+            $relationSettings[$t] = $size
+            continue
+        }
+        $msg = "CSV $t tier size is invalid: $size"
+        Write-JujuWarning $msg
+        Set-JujuStatus -Status 'blocked' -Message $msg
+        return
+    }
+    foreach ($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
 }
