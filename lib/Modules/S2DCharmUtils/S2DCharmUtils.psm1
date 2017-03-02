@@ -12,14 +12,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-Import-Module JujuLogging
-Import-Module JujuHooks
-Import-Module ADCharmUtils
-Import-Module WSFCCharmUtils
-
-
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
-
 
 function Remove-ExtraStoragePools {
     Update-StorageProviderCache
@@ -57,3 +49,8 @@ function Clear-ExtraDisks {
         }
     }
 }
+
+Export-ModuleMember -Function @(
+    'Remove-ExtraStoragePools',
+    'Clear-ExtraDisks'
+)

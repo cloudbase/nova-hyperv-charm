@@ -20,9 +20,9 @@ Import-Module JujuWindowsUtils
 Import-Module JujuHelper
 
 
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
 $DEFAULT_OPENSTACK_VERSION = 'newton'
 $SUPPORTED_OPENSTACK_RELEASES = @('liberty', 'mitaka', 'newton')
+$DEFAULT_JUJU_RESOURCE_CONTENT = "Cloudbase default Juju resource"
 
 # Nova constants
 $NOVA_PRODUCT = @{
@@ -223,28 +223,28 @@ function New-ConfigFile {
 
     $incompleteRelations = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
     $mergedContext = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
-
-    foreach ($context in $ContextGenerators) {
-        Write-JujuWarning ("Getting context for {0}" -f $context["relation"])
-        $ctxt = Invoke-Command -ScriptBlock $context["generator"]
-        if (!$ctxt.Count -and ($context["mandatory"] -ne $null) -and ($context["mandatory"] -eq $true)) {
-            # Context is empty. Probably peer not ready.
-            Write-JujuWarning ("Context for {0} is EMPTY" -f $context["relation"])
-            $incompleteRelations.Add($context["relation"])
+    foreach ($ctxtGen in $ContextGenerators) {
+        Write-JujuWarning ("Getting context for {0}" -f $ctxtGen["relation"])
+        $ctxt = Invoke-Command -ScriptBlock $ctxtGen["generator"]
+        if (!$ctxt.Count) {
+            if($ctxtGen["mandatory"] -eq $true) {
+                # Context is empty. Probably peer not ready.
+                Write-JujuWarning ("Context for {0} is EMPTY" -f $ctxtGen["relation"])
+                $incompleteRelations.Add($ctxtGen["relation"])
+            }
             continue
         }
-        Write-JujuWarning ("Got {0} context: {1}" -f @($context["relation"], ($ctxt.Keys -join ',' )))
-        foreach ($val in $ctxt.Keys) {
-            $mergedContext[$val] = $ctxt[$val]
+        Write-JujuWarning ("Got {0} context: {1}" -f @($ctxtGen["relation"], ($ctxt.Keys -join ',' )))
+        foreach ($k in $ctxt.Keys) {
+            if($ctxt[$k]) {
+                $mergedContext[$k] = $ctxt[$k]
+            }
         }
     }
-
     if (!$mergedContext.Count) {
         return $incompleteRelations
     }
-
     Start-RenderTemplate -Context $mergedContext -TemplateName $Template -OutFile $OutFile
-
     return $incompleteRelations
 }
 
@@ -472,18 +472,15 @@ function Get-MySQLContext {
 
 function Get-ConfigContext {
     $cfg = Get-JujuCharmConfig
-
     $ctxt = @{}
-    foreach ($config in $cfg.GetEnumerator()) {
-        $name = $config.Key.Replace("-", "_")
-        if ($config.Value.Gettype() -is [System.String]) {
-            $value = $config.Value.Replace('/', '\')
-        } else {
-            $value = $config.Value
+    foreach ($k in $cfg.Keys) {
+        if($cfg[$k] -eq $null) {
+            continue
         }
-        $ctxt[$name] = $value
+        $configName = $k -replace "-", "_"
+        $configValue = [string]$cfg[$k] -replace  "/", "\"
+        $ctxt[$configName] = $configValue
     }
-
     return $ctxt
 }
 

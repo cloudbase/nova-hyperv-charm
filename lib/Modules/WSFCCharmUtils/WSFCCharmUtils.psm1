@@ -14,15 +14,10 @@
 
 Import-Module JujuHooks
 Import-Module JujuLogging
-Import-Module ADCharmUtils
-Import-Module JujuWindowsUtils
-
-
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
 
 
 function Get-WSFCContext {
-    $key = "clustered-$COMPUTERNAME"
+    $key = "clustered-${env:COMPUTERNAME}"
     $requiredCtxt = @{
         $key = $null
         'cluster-name' = $null
@@ -44,7 +39,7 @@ function Set-ClusterableStatus {
     )
 
     $relationSettings = @{
-        "computername" = $COMPUTERNAME
+        "computername" = $env:COMPUTERNAME
         "ready" = $Ready
     }
     if($Relation) {
@@ -57,3 +52,8 @@ function Set-ClusterableStatus {
         Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
 }
+
+Export-ModuleMember -Function @(
+    'Get-WSFCContext',
+    'Set-ClusterableStatus'
+)
