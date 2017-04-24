@@ -75,11 +75,11 @@ $env:OVS_RUNDIR = Join-Path $env:ProgramData "openvswitch"
 $OVS_VSWITCHD_SERVICE_NAME = "ovs-vswitchd"
 $OVS_OVSDB_SERVICE_NAME = "ovsdb-server"
 $OVS_JUJU_BR = "juju-br"
-$OVS_EXT_NAME = "Open vSwitch Extension"
-$OVS_PRODUCT_NAME = "Open vSwitch for Hyper-V 2.5"
 $OVS_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\Open vSwitch"
 $OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
-$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.5.0-certified.msi"
+$OVS_PRODUCT_NAME = 'Cloudbase Open vSwitch'
+$OVS_EXT_NAME = "Cloudbase Open vSwitch Extension"
+$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.6.1-certified.msi#md5=840F51250C551957BC0C546B96BD53D6"
 
 # Cinder constants
 $CINDER_PRODUCT = @{
