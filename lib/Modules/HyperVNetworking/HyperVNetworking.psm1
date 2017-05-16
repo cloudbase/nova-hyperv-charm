@@ -21,19 +21,16 @@ Import-Module Networking
 
 function Get-NetType {
     $cfg = Get-JujuCharmConfig
-
     if($cfg['network-type'] -notin $NOVA_VALID_NETWORK_TYPES) {
         Throw ("Invalid network type: '{0}'" -f @($cfg['network-type']))
     }
-
     if((Get-IsNanoServer) -and ($cfg['network-type'] -ne 'hyperv')) {
         Throw ("'{0}' network type is not supported on Nano Server" -f @($cfg['network-type']))
     }
-
     return $cfg['network-type']
 }
 
-function Get-VMSwitchName {
+function Get-JujuVMSwitchName {
     $cfg = Get-JujuCharmConfig
     $vmSwitchName = $cfg['vmswitch-name']
     if (!$vmSwitchName) {
@@ -43,18 +40,10 @@ function Get-VMSwitchName {
 }
 
 function Get-JujuVMSwitch {
-    $vmSwitchName = Get-VMSwitchName
-
+    $vmSwitchName = Get-JujuVMSwitchName
     $vmSwitch = Get-VMSwitch -SwitchType External -Name $vmSwitchName -ErrorAction SilentlyContinue
     if($vmSwitch) {
         return $vmSwitch
-    }
-
-    # It means that the config 'vmswitch-name' changed and thus we take the first
-    # external switch on system to get the old switch created by the charm.
-    $vmSwitches = [array](Get-VMSwitch -SwitchType External -ErrorAction SilentlyContinue)
-    if($vmSwitches) {
-        return $vmSwitches[0]
     }
     return $null
 }
@@ -68,16 +57,13 @@ function Get-NICsByMAC {
     if (!$MACAddresses.Count) {
         return $null
     }
-
     [System.Array]$nics = Get-NetAdapter | Where-Object {
         $_.MacAddress -in $MACAddresses -and
         $_.DriverFileName -notin @("vmswitch.sys", "NdisImPlatform.sys")
     }
-
     if(!$nics) {
         return $null
     }
-
     return $nics
 }
 
@@ -90,16 +76,13 @@ function Get-NICsByName {
     if (!$Names.Count) {
         return $null
     }
-
     [System.Array]$nics = Get-NetAdapter | Where-Object {
         $_.Name -in $Names -and
         $_.DriverFileName -ne "vmswitch.sys"
     }
-
     if(!$nics) {
         return $null
     }
-
     return $nics
 }
 
@@ -111,16 +94,13 @@ function Get-InterfaceFromConfig {
 
     $cfg = Get-JujuCharmConfig
     $dataInterfaceFromConfig = $cfg[$ConfigOption]
-
     Write-JujuWarning "Looking for interfaces: $dataInterfaceFromConfig"
-
     if (!$dataInterfaceFromConfig) {
         if($MustFindAdapter) {
             Throw "No config option '$ConfigOption' was specified"
         }
         return $null
     }
-
     $byMac = @()
     $byName = @()
     $macregex = "^([a-fA-F0-9]{2}:){5}([a-fA-F0-9]{2})$"
@@ -131,19 +111,15 @@ function Get-InterfaceFromConfig {
             $byName += $i
         }
     }
-
     $ifs = @()
-
     $nicsByMac = Get-NICsByMAC -MACAddresses $byMac
     if($nicsByMac) {
         $ifs += [System.Array]$nicsByMac
     }
-
     $nicsByName = Get-NICsByName -Names $byName
     if($nicsByName) {
         $ifs += [System.Array]$nicsByName
     }
-
     if ($ifs.Count) {
         $ifs | Enable-NetAdapter | Out-Null
     } else {
@@ -151,7 +127,6 @@ function Get-InterfaceFromConfig {
             Throw "Could not find network adapters"
         }
     }
-
     return $ifs
 }
 
@@ -169,7 +144,6 @@ function Get-IPSAsArray {
 
     $addr = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
     [System.Array]$addresses = Get-NetIPAddress -InterfaceIndex $InterfaceIndex
-
     foreach ($i in $addresses) {
         $ip = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
         $ip["IPAddress"] = [string]$i.IPAddress;
@@ -178,7 +152,6 @@ function Get-IPSAsArray {
         $ip["AddressFamily"] = [string]$i.AddressFamily;
         $addr.Add($ip)
     }
-
     return $addr
 }
 
@@ -208,22 +181,21 @@ function Get-InterfaceIpInformation {
     )
 
     $adapter = Get-NetAdapter -InterfaceIndex $InterfaceIndex
-
     $adapterInfo = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
-
     $adapterInfo["name"] = $adapter.Name
     $adapterInfo["index"] = $InterfaceIndex
     $adapterInfo["mac"] = $adapter.MacAddress
-
     $ips = Get-IPSAsArray -InterfaceIndex $InterfaceIndex
     if($ips.Count) {
         $adapterInfo["addresses"] = $ips
     }
-
     $ns = Get-NameserversAsArray -InterfaceIndex $InterfaceIndex
     if($ns) {
         $adapterInfo["nameservers"] = $ns
     }
-
+    $defaultNetRoute = Get-NetRoute -InterfaceIndex $InterfaceIndex -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue
+    if($defaultNetRoute) {
+        $adapterInfo["default_gateway"] = $defaultNetRoute.NextHop
+    }
     return $adapterInfo
 }

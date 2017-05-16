@@ -9,12 +9,12 @@ options:
     description: "Enable verbose logging."
   openstack-version:
     type: string
-    default: newton
+    default: ocata
     description: |
-      Version of Openstack nova compute to install. Choices are:
-       * liberty
+      Version of OpenStack Nova Compute to install. Choices are:
        * mitaka
        * newton
+       * ocata
   ad-computer-group:
     type: string
     default: "nova-group"
@@ -47,7 +47,7 @@ options:
     description: |
       Represents the size occupied by the CSV requested from the s2d-proxy charm on the Performance
       tier. In a Hyper-Converged scenario, each nova-hyperv unit requests a CSV to store the virtual machines.
-      Example: '20G' or '20480MB'
+      Example: '20GB' or '20480MB'
       When the above is requested from the s2d-proxy charm, if there's is enough available
       space in the Performance tier, the volume will be created.
       NOTE: If you optionally specify 'csv-capacity-size', then that requirement must be fullfiled
@@ -57,7 +57,7 @@ options:
     default: ''
     description: |
       Represents the size occupied by the CSV requested from the s2d-proxy charm on the Capacity tier.
-      Example: '20G' or '20480MB'
+      Example: '20GB' or '20480MB'
       NOTE: Please, also look at the 'csv-performance-size' config option, above as these configuration options
       are used together.
   ovs-installer-url:
@@ -116,6 +116,10 @@ options:
       Neutron agent to use. Valid options are:
         * hyperv
         * ovs
+  max-concurrent-live-migrations:
+    type: int
+    default: 1
+    description: "Maximum concurrent live migrations."
   change-hostname:
     type: boolean
     default: False

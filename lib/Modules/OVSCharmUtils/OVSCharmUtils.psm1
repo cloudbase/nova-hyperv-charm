@@ -49,34 +49,26 @@ function Confirm-IPIsInDataNetwork {
     if($IP.IPAddress -eq "127.0.0.1") {
         return $false
     }
-
     $port = Get-NetAdapter -InterfaceIndex $IP.IfIndex -ErrorAction SilentlyContinue
     if(!$port) {
         Write-JujuWarning ("Port with index '{0}' no longer exists" -f @($IP.IfIndex))
         return $false
     }
-
     if($port.DriverFileName -eq "vmswitch.sys") {
         Write-JujuWarning "Port '$port' is a Hyper-V network adapter. Skipping"
         return $false
     }
-
     $netDetails = $DataNetwork.Split("/")
     $decimalMask = ConvertTo-Mask $netDetails[1]
-
     Write-JujuWarning ("Checking {0} on interface {1}" -f @($IP.IPAddress, $IP.InterfaceAlias))
-
     if ($IP.PrefixLength -ne $netDetails[1]) {
         return $false
     }
-
     $network = Get-NetworkAddress $IP.IPv4Address $decimalMask
     Write-JujuWarning ("Network address for {0} is {1}" -f @($IP.IPAddress, $network))
-
     if ($network -ne $netDetails[0]) {
         return $false
     }
-
     return $true
 }
 
@@ -87,13 +79,11 @@ function Get-DataPortsFromDataNetwork {
     #>
 
     $ports = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
-
     $cfg = Get-JujuCharmConfig
     if (!$cfg["os-data-network"]) {
         Write-JujuWarning "'os-data-network' is not defined"
         return $ports
     }
-
     $ovsAdaptersInfo = Get-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info"
     if($ovsAdaptersInfo) {
         foreach($i in $ovsAdaptersInfo) {
@@ -102,41 +92,52 @@ function Get-DataPortsFromDataNetwork {
         }
         return $ports
     }
-
+    $vmSwitchName = Get-JujuVMSwitchName
+    $vmSwitch = Get-JujuVMSwitch
+    if($vmSwitch) {
+        $vmSwitchNetAdapter = Get-Netadapter -InterfaceDescription $vmSwitch.NetAdapterInterfaceDescription
+        $managementOS = $vmSwitch.AllowManagementOS
+        # Temporary set the management OS to $true
+        Set-VMSwitch -VMSwitch $vmSwitch -AllowManagementOS $true -Confirm:$false
+        [array]$managementOSAdapters = Get-VMNetworkAdapter -SwitchName $vmSwitchName -ManagementOS
+    }
     # If there is any network interface configured to use DHCP and did not get an IP address
     # we manually renew its lease and try to get an IP address before searching for the data network
     Invoke-InterfacesDHCPRenew
-
     $ovsAdaptersInfo = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
-
     $configuredAddresses = Get-NetIPAddress -AddressFamily IPv4
     foreach ($i in $configuredAddresses) {
         if(Confirm-IPIsInDataNetwork -DataNetwork $cfg['os-data-network'] -IP $i) {
+            $adapter = Get-NetAdapter -InterfaceIndex $i.IfIndex
+            if($adapter.DeviceID -in $managementOSAdapters.DeviceID) {
+                $adapter = $vmSwitchNetAdapter
+            }
+            if($adapter.ifIndex -in $ports.ifIndex) {
+                continue
+            }
             $adapterInfo = Get-InterfaceIpInformation -InterfaceIndex $i.IfIndex
             $ovsAdaptersInfo.Add($adapterInfo)
-            $adapter = Get-NetAdapter -InterfaceIndex $i.IfIndex
             $ports.Add($adapter)
         }
     }
-
     if($ovsAdaptersInfo) {
         Set-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info" -Value $ovsAdaptersInfo
     }
-
+    if($vmswitch) {
+        # Restore the management OS value for the switch
+        Set-VMSwitch -VMSwitch $vmSwitch -AllowManagementOS $managementOS -Confirm:$false
+    }
     return $ports
 }
 
 function Get-OVSDataPorts {
     $dataPorts = Get-DataPortsFromDataNetwork
-
     if ($dataPorts) {
         return $dataPorts
     }
-
     $fallbackPort = Get-FallbackNetadapter
     $adapterInfo = Get-InterfaceIpInformation -InterfaceIndex $fallbackPort.IfIndex
     Set-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info" -Value @($adapterInfo)
-
     return @($fallbackPort)
 }
 
@@ -150,12 +151,10 @@ function Set-OVSAdapterAddress {
     if(!$ovsIf) {
         Throw "Could not find OVS adapter."
     }
-
     $ips = $AdapterInfo["addresses"]
     if(!$ips) {
         Write-JujuWarning "No IP addresses saved to configure OVS adapter."
     }
-
     foreach ($i in $ips) {
         $ipAddr = Get-NetIPAddress -AddressFamily $i["AddressFamily"] -IPAddress $i["IPAddress"] `
                                    -PrefixLength $i["PrefixLength"] -ErrorAction SilentlyContinue
@@ -170,6 +169,12 @@ function Set-OVSAdapterAddress {
         }
         New-NetIPAddress -IPAddress $i["IPAddress"] -PrefixLength $i["PrefixLength"] -InterfaceIndex $ovsIf.ifIndex | Out-Null
     }
+    if($AdapterInfo['default_gateway']) {
+        New-NetRoute -DestinationPrefix "0.0.0.0/0" -NextHop $AdapterInfo['default_gateway'] -InterfaceIndex $ovsIf.ifIndex | Out-Null
+    }
+    if($AdapterInfo['nameservers'] -and ($AdapterInfo['nameservers'].Count -gt 0)) {
+        Set-DnsClientServerAddress -ServerAddresses $AdapterInfo['nameservers'] -InterfaceIndex $ovsIf.ifIndex -Confirm:$false | Out-Null
+    }
 }
 
 function New-OVSInternalInterfaces {
@@ -177,7 +182,6 @@ function New-OVSInternalInterfaces {
     if(!$ovsAdaptersInfo) {
         Throw "Failed to find OVS adapters info"
     }
-
     # Use only one adapter as OVS bridge port
     foreach($i in $ovsAdaptersInfo) {
         if(!$i['addresses']) {
@@ -186,10 +190,8 @@ function New-OVSInternalInterfaces {
         $adapterInfo = $i
         break
     }
-
     Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-br", $OVS_JUJU_BR) | Out-Null
     Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-port", $OVS_JUJU_BR, $adapterInfo["name"]) | Out-Null
-
     # Enable the OVS adapter
     Get-Netadapter $OVS_JUJU_BR | Enable-NetAdapter | Out-Null
     Set-OVSAdapterAddress -AdapterInfo $adapterInfo
@@ -205,12 +207,10 @@ function Get-OVSLocalIP {
         Write-JujuWarning "OVS adapter is not created yet"
         return $null
     }
-
     [array]$addresses = Get-NetIPAddress -InterfaceIndex $ovsAdapter.InterfaceIndex -AddressFamily IPv4
     if(!$addresses) {
         Throw "No IPv4 addresses configured for the OVS port"
     }
-
     return $addresses[0].IPAddress
 }
 
@@ -220,23 +220,19 @@ function Get-OVSExtStatus {
         Write-JujuWarning "VM switch was not created yet"
         return $null
     }
-
     $ext = Get-VMSwitchExtension -VMSwitchName $vmSwitch.Name -Name $OVS_EXT_NAME
     if (!$ext){
         Write-JujuWarning "Open vSwitch extension not installed"
         return $null
     }
-
     return $ext
 }
 
 function Enable-OVSExtension {
     $ext = Get-OVSExtStatus
-
     if (!$ext){
-       Throw "Cannot enable OVS extension. Not installed"
+       Throw "Failed to enable OVS extension"
     }
-
     if (!$ext.Enabled) {
         Enable-VMSwitchExtension $OVS_EXT_NAME $ext.SwitchName | Out-Null
     }
@@ -244,7 +240,6 @@ function Enable-OVSExtension {
 
 function Disable-OVSExtension {
     $ext = Get-OVSExtStatus
-
     if ($ext -and $ext.Enabled) {
         Disable-VMSwitchExtension $OVS_EXT_NAME $ext.SwitchName | Out-Null
     }
@@ -256,19 +251,16 @@ function Get-OVSInstallerPath {
     if (!$installerUrl) {
         $installerUrl = $OVS_DEFAULT_INSTALLER_URL
     }
-
     $file = ([System.Uri]$installerUrl).Segments[-1]
     $tempDownloadFile = Join-Path $env:TEMP $file
     Start-ExecuteWithRetry {
         Invoke-FastWebRequest -Uri $installerUrl -OutFile $tempDownloadFile | Out-Null
     } -RetryMessage "OVS installer download failed. Retrying"
-
     return $tempDownloadFile
 }
 
 function Disable-OVS {
     $ovsServices = @($OVS_VSWITCHD_SERVICE_NAME, $OVS_OVSDB_SERVICE_NAME)
-
     # Check if both OVS services are up and running
     $ovsRunning = $true
     foreach($svcName in $ovsServices) {
@@ -281,14 +273,12 @@ function Disable-OVS {
             $ovsRunning = $false
         }
     }
-
     if($ovsRunning) {
         $bridges = Start-ExternalCommand { & $OVS_VSCTL list-br }
         foreach($bridge in $bridges) {
             Start-ExternalCommand { & $OVS_VSCTL del-br $bridge }
         }
     }
-
     foreach($svcName in $ovsServices) {
         $svc = Get-Service -Name $svcName -ErrorAction SilentlyContinue
         if($svc) {
@@ -296,13 +286,11 @@ function Disable-OVS {
             Disable-Service $svcName
         }
     }
-
     Disable-OVSExtension
 }
 
 function Enable-OVS {
     Enable-OVSExtension
-
     $ovsServices = @($OVS_OVSDB_SERVICE_NAME, $OVS_VSWITCHD_SERVICE_NAME)
     foreach($svcName in $ovsServices) {
         Enable-Service $svcName
@@ -315,10 +303,8 @@ function Install-OVS {
         Write-JujuWarning "OVS is already installed"
         return
     }
-
     $installerPath = Get-OVSInstallerPath
     Write-JujuWarning "Installing OVS from '$installerPath'"
-
     $logFile = Join-Path $env:APPDATA "ovs-installer-log.txt"
     $extraParams = @("INSTALLDIR=`"$OVS_INSTALL_DIR`"")
     Install-Msi -Installer $installerPath -LogFilePath $logFile -ExtraArgs $extraParams
@@ -330,7 +316,6 @@ function Uninstall-OVS {
         Write-JujuWarning "OVS is not installed"
         return
     }
-
     Write-JujuWarning "Uninstalling OVS"
     Uninstall-WindowsProduct -Name $OVS_PRODUCT_NAME
 }
