@@ -28,6 +28,8 @@ provides:
 requires:
   s2d:
     interface: s2d
+  s2d-health-check:
+    interface: s2d-health
   csv:
     interface: csv
   amqp:

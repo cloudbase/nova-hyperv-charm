@@ -456,6 +456,13 @@ function Get-S2DCSVContext {
     if(!$volumePath) {
         return @{}
     }
+    Start-ExecuteWithRetry {
+        Start-Service "ClusSvc"
+        $clusterSvc = Get-Service -Name "ClusSvc"
+        if($clusterSvc.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+            Throw ("Cluster service is not running. Current status: {0}" -f @($clusterSvc.Status))
+        }
+    } -MaxRetryCount 24 -RetryInterval 5 -RetryMessage "Cluster service not yet started. Retrying"
     if (!(Test-Path $volumePath)) {
         Write-JujuWarning "Relation information states that an s2d csv volume should be present, but could not be found locally."
         return @{}
@@ -630,6 +637,29 @@ function Set-HyperVUniqueMACAddressesPool {
     Set-ItemProperty -Path $registryNamespace -Name "MaximumMacAddress" -Value ([byte[]]$maxMacAddress)
 }
 
+function Set-S2DHealthChecksRelation {
+    $s2dRelationCreated = Confirm-JujuRelationCreated -Relation 's2d'
+    $csvRelationCreated = Confirm-JujuRelationCreated -Relation 'csv'
+    if(!$s2dRelationCreated -or !$csvRelationCreated) {
+        return
+    }
+    # In case cluster nodes go down, the Windows fail-over cluster will set the CSV's to offline
+    # and they need to be manually brought back online when nodes come up again. We need to trigger
+    # health checks for the S2D cluster whenever nodes boot for the first time. The s2d-proxy
+    # charm will make sure that the CSV for this unit is online and mounted.
+    $systemStartups = Get-WinEvent -FilterHashtable @{
+        'LogName'='Security'
+        'ID' = 4608 # This event is raised only when Windows is starting up.
+    }
+    $rids = Get-JujuRelationIds 's2d-health-check'
+    foreach($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings @{
+            'system-startups' = $systemStartups.Count
+        }
+    }
+}
+
+
 function Invoke-InstallHook {
     if (!(Get-IsNanoServer)) {
         try {
@@ -680,6 +710,7 @@ function Invoke-ConfigChangedHook {
         Set-VMHost -MaximumVirtualMachineMigrations $cfg['max-concurrent-live-migrations'] `
                    -MaximumStorageMigrations $cfg['max-concurrent-live-migrations']
     }
+    Set-S2DHealthChecksRelation
     $incompleteRelations = @()
     $services = Get-CharmServices
     $novaIncompleteRelations = New-ConfigFile -ContextGenerators $services['nova']['context_generators'] `
