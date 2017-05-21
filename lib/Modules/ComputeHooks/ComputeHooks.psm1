@@ -443,6 +443,75 @@ function Get-S2DVolumeName {
     return $volumeName
 }
 
+function Confirm-RunningClusterService {
+    Start-Service "ClusSvc"
+    Start-ExecuteWithRetry {
+        $clusterSvc = Get-Service -Name "ClusSvc"
+        if($clusterSvc.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+            Throw ("Cluster service is not running. Current status: {0}" -f @($clusterSvc.Status))
+        }
+    } -MaxRetryCount 12 -RetryInterval 5 -RetryMessage "Cluster service not yet started. Retrying"
+}
+
+function Get-CSVMountPoint {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$CSVPath
+    )
+
+    $retry = 0
+    $maxRetries = 12
+    $retryInterval = 5
+    while($retry -lt $maxRetries) {
+        $csvPartitions = Start-ExecuteWithRetry {
+            Get-ManagementObject -Namespace "root\MSCluster" -Class "MSCluster_DiskPartition" -ErrorAction Stop
+        } -MaxRetryCount 12 -RetryInterval 5 -RetryMessage "Could not get the CSVs' partitions. Retrying"
+        # Trim any possible ending '\' from the paths before comparing them
+        $mountPoint = $csvPartitions | ForEach-Object { $_.MountPoints } | Where-Object { $_.Trim('\') -eq $CSVPath.Trim('\') }
+        if($mountPoint) {
+            return $mountPoint
+        }
+        Write-JujuWarning "Could not find the CSV mount point: $CSVPath. Retrying"
+        Start-Sleep $retryInterval
+        $retry++
+    }
+    return $null
+}
+
+function Confirm-CSVStatus {
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$CSVName,
+        [Parameter(Mandatory=$true)]
+        [string]$CSVPath
+    )
+
+    Confirm-RunningClusterService
+    if((Get-IsNanoServer)) {
+        # NOTE(ibalutoiu): On Nano Server, just check if the CSV path exists.
+        if(!(Test-Path $CSVPath)) {
+            return $false
+        }
+        return $true
+    }
+    # Check if the CSV is mounted locally with a timeout
+    $mountPoint = Get-CSVMountPoint -CSVPath $CSVPath
+    if($mountPoint) {
+        return $true
+    }
+    # Sometimes, the above check fails when the cluster service doesn't initialize properly
+    # and the node doesn't have all the CSVs mounted locally. We restart the cluster
+    # service and check again. This time, if the check fails, an exception is thrown.
+    Write-JujuWarning "Restarting the cluster service"
+    Restart-Service "ClusSvc" | Out-Null
+    Confirm-RunningClusterService
+    $mountPoint = Get-CSVMountPoint -CSVPath $CSVPath
+    if($mountPoint) {
+        return $true
+    }
+    Throw "Could not find the CSV $CSVName mount point: $CSVPath"
+}
+
 function Get-S2DCSVContext {
     Write-JujuWarning "Generating context for S2D CSV"
     $required = @{"csv-paths" = $null}
@@ -456,15 +525,8 @@ function Get-S2DCSVContext {
     if(!$volumePath) {
         return @{}
     }
-    Start-ExecuteWithRetry {
-        Start-Service "ClusSvc"
-        $clusterSvc = Get-Service -Name "ClusSvc"
-        if($clusterSvc.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
-            Throw ("Cluster service is not running. Current status: {0}" -f @($clusterSvc.Status))
-        }
-    } -MaxRetryCount 24 -RetryInterval 5 -RetryMessage "Cluster service not yet started. Retrying"
-    if (!(Test-Path $volumePath)) {
-        Write-JujuWarning "Relation information states that an s2d csv volume should be present, but could not be found locally."
+    $csvStatus = Confirm-CSVStatus -CSVName $volumeName -CSVPath $volumePath
+    if(!$csvStatus) {
         return @{}
     }
     $ctxt = @{'csv_path' = $volumePath}
@@ -650,7 +712,7 @@ function Set-S2DHealthChecksRelation {
     $systemStartups = Get-WinEvent -FilterHashtable @{
         'LogName'='Security'
         'ID' = 4608 # This event is raised only when Windows is starting up.
-    }
+    } -ErrorAction SilentlyContinue
     $rids = Get-JujuRelationIds 's2d-health-check'
     foreach($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings @{
