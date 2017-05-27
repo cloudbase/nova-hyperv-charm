@@ -270,9 +270,8 @@ function Start-ConfigureNeutronAgent {
         "ovs" {
             Stop-Service $services["neutron"]["service"]
             Disable-Service $services["neutron"]["service"]
-            Install-OVS
-            Disable-OVS
             Start-ConfigureVMSwitch
+            Install-OVS
             Enable-OVS
             New-OVSInternalInterfaces
             Enable-Service $services["neutron-ovs"]["service"]

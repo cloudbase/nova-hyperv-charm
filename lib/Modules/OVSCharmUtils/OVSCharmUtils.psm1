@@ -19,6 +19,25 @@ Import-Module OpenStackCommon
 Import-Module HyperVNetworking
 Import-Module JujuHelper
 
+$OVS_SERVICES = @{
+    $OVS_VSWITCHD_SERVICE_NAME = @{
+        'display_name' = "Open vSwitch Service"
+        'binary_path' = ("`"$OVS_INSTALL_DIR\bin\ovs-vswitchd.exe`" " +
+                         "--log-file=`"$OVS_INSTALL_DIR\logs\ovs-vswitchd.log`" " +
+                         "unix:`"${env:OVS_RUNDIR}\db.sock`" --unixctl=`"${env:OVS_RUNDIR}\ovs-vswitchd.ctl`" " +
+                         "--pidfile --service --service-monitor")
+    }
+    $OVS_OVSDB_SERVICE_NAME = @{
+        'display_name' = "Open vSwitch DB Service"
+        'binary_path' = ("`"$OVS_INSTALL_DIR\bin\ovsdb-server.exe`" " +
+                         "--log-file=`"$OVS_INSTALL_DIR\logs\ovsdb-server.log`" " +
+                         "--pidfile --service --service-monitor " +
+                         "--unixctl=`"${env:OVS_RUNDIR}\ovsdb-server.ctl`" " +
+                         "--remote=`"db:Open_vSwitch,Open_vSwitch,manager_options`" " +
+                         "--remote=punix:`"${env:OVS_RUNDIR}\db.sock`" `"$OVS_INSTALL_DIR\conf\conf.db`"")
+    }
+}
+
 
 function Invoke-InterfacesDHCPRenew {
     <#
@@ -135,6 +154,7 @@ function Get-OVSDataPorts {
     if ($dataPorts) {
         return $dataPorts
     }
+    Write-JujuWarning "OVS data ports could not be found. Using the main adapter NIC as the data port"
     $fallbackPort = Get-FallbackNetadapter
     $adapterInfo = Get-InterfaceIpInformation -InterfaceIndex $fallbackPort.IfIndex
     Set-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info" -Value @($adapterInfo)
@@ -296,6 +316,30 @@ function Enable-OVS {
         Enable-Service $svcName
         Start-Service $svcName
     }
+    Invoke-JujuCommand -Command @($OVS_VSCTL, 'set-manager', 'ptcp:6640:127.0.0.1')
+}
+
+function New-OVSWindowsServices {
+    $ovsSvc = Get-ManagementObject -ClassName Win32_Service -Filter "Name='$OVS_VSWITCHD_SERVICE_NAME'"
+    $ovsDBSvc = Get-ManagementObject -ClassName Win32_Service -Filter "Name='$OVS_OVSDB_SERVICE_NAME'"
+    if(!$ovsSvc -and !$ovsDBSvc) {
+        Write-JujuWarning "OVS services are not created yet"
+        return
+    }
+    if(($ovsSvc.PathName -eq $OVS_SERVICES[$OVS_VSWITCHD_SERVICE_NAME]['binary_path']) -and
+       ($ovsDBSvc.PathName -eq $OVS_SERVICES[$OVS_OVSDB_SERVICE_NAME]['binary_path'])) {
+        Write-JujuWarning "OVS services are correctly configured"
+        return
+    }
+    Stop-Service $OVS_VSWITCHD_SERVICE_NAME
+    Stop-Service $OVS_OVSDB_SERVICE_NAME -Force
+    Remove-WindowsServices -Names @($OVS_VSWITCHD_SERVICE_NAME, $OVS_OVSDB_SERVICE_NAME)
+    foreach($svcName in @($OVS_OVSDB_SERVICE_NAME, $OVS_VSWITCHD_SERVICE_NAME)) {
+        New-Service -Name $svcName -DisplayName $OVS_SERVICES[$svcName]['display_name'] `
+                    -BinaryPathName $OVS_SERVICES[$svcName]['binary_path'] -Confirm:$false
+        Start-Service -Name $svcName
+        Set-Service -Name $svcName -StartupType Automatic
+    }
 }
 
 function Install-OVS {
@@ -308,6 +352,7 @@ function Install-OVS {
     $logFile = Join-Path $env:APPDATA "ovs-installer-log.txt"
     $extraParams = @("INSTALLDIR=`"$OVS_INSTALL_DIR`"")
     Install-Msi -Installer $installerPath -LogFilePath $logFile -ExtraArgs $extraParams
+    New-OVSWindowsServices
 }
 
 function Uninstall-OVS {
