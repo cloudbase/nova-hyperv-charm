@@ -120,6 +120,13 @@ options:
     type: int
     default: 1
     description: "Maximum concurrent live migrations."
+  limit-cpu-features:
+    type: boolean
+    default: False
+    description: |
+      This flag is needed to support live migration to hosts with different
+      CPU features and checked during instance creation in order to limit
+      the CPU features used by the instance.
   change-hostname:
     type: boolean
     default: False
