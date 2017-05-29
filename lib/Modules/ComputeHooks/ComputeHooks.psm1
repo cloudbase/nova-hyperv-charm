@@ -980,7 +980,7 @@ function Invoke-S2DRelationJoinedHook {
     }
     $settings = @{
         'ready' = $true
-        'computername' = $env:COMPUTERNAME
+        'computername' = [System.Net.Dns]::GetHostName()
         'cluster-name' = $wsfcCtxt['cluster-name']
         'cluster-ip' = $wsfcCtxt['cluster-ip']
     }

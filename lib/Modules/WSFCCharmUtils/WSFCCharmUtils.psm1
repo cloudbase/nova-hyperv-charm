@@ -39,7 +39,7 @@ function Set-ClusterableStatus {
     )
 
     $relationSettings = @{
-        "computername" = $env:COMPUTERNAME
+        "computername" = [System.Net.Dns]::GetHostName()
         "ready" = $Ready
     }
     if($Relation) {

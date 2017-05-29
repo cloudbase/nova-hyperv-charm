@@ -99,7 +99,7 @@ function Get-ActiveDirectoryContext {
     if($global:JUJU_AD_RELATION_CONTEXT) {
         return $global:JUJU_AD_RELATION_CONTEXT
     }
-    $blobKey = ("djoin-" + $env:COMPUTERNAME)
+    $blobKey = ("djoin-" + [System.Net.Dns]::GetHostName())
     $requiredCtx = @{
         "already-joined-${env:COMPUTERNAME}" = $null
         "address" = $null

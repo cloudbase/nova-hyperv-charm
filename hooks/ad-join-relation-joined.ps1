@@ -28,7 +28,7 @@ try {
     }
     $constraintsList = @("Microsoft Virtual System Migration Service", "cifs")
     $settings = @{
-        'computername' = $env:COMPUTERNAME
+        'computername' = [System.Net.Dns]::GetHostName()
         'constraints' = Get-MarshaledObject $constraintsList
     }
     $cfg = Get-JujuCharmConfig
