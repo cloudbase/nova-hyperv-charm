@@ -250,6 +250,8 @@ function New-CharmServices {
             New-Service -Name $charmServices[$svcName]["service"] `
                         -BinaryPathName $charmServices[$svcName]["serviceBinPath"] `
                         -DisplayName $charmServices[$svcName]["display_name"] -Confirm:$false
+            Start-ExternalCommand { sc.exe failure $charmServices[$svcName]["service"] reset=5 actions=restart/1000 }
+            Start-ExternalCommand { sc.exe failureflag $charmServices[$svcName]["service"] 1 }
             Stop-Service $charmServices[$svcName]["service"]
         }
     }
