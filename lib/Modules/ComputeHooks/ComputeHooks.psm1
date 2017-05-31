@@ -718,6 +718,7 @@ function Set-S2DHealthChecksRelation {
     foreach($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings @{
             'system-startups' = $systemStartups.Count
+            'csv-name' = Get-S2DVolumeName
         }
     }
 }
