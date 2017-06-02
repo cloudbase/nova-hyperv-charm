@@ -1005,35 +1005,16 @@ function Invoke-CSVRelationJoinedHook {
         Set-JujuStatus -Status 'blocked' -Message 'CSV relation established, but csv was not configured'
         return
     }
-    # Validate storage sizes and convert size from friendly format to bytes
-    $csvConfig = @{}
-    if($cfg['csv-performance-size']) {
-        $csvConfig['performance-tier-size'] = $cfg['csv-performance-size']
-    }
-    if($cfg['csv-capacity-size']) {
-        $csvConfig['capacity-tier-size'] = $cfg['csv-capacity-size']
-    }
     $relationSettings = @{
         'volume-name' = Get-S2DVolumeName
     }
-    foreach($t in $csvConfig.Keys) {
-        $size = $csvConfig[$t]
-        if($size -cmatch '^[0-9]+(K|M|G|T){1}B$') {
-            # This is a friendly format size
-            $relationSettings[$t] = Invoke-Expression $size
-            continue
-        }
-        $uint64Size = $size -as [UInt64]
-        if ($uint64Size) {
-            # In case the config is an UInt64. This will be considered the value in bytes.
-            $relationSettings[$t] = $size
-            continue
-        }
-        $msg = "CSV $t tier size is invalid: $size"
-        Write-JujuWarning $msg
-        Set-JujuStatus -Status 'blocked' -Message $msg
-        return
+    if($cfg['csv-performance-size']) {
+        $relationSettings['performance-tier-size'] = $cfg['csv-performance-size']
     }
+    if($cfg['csv-capacity-size']) {
+        $relationSettings['capacity-tier-size'] = $cfg['csv-capacity-size']
+    }
+    $rids = Get-JujuRelationIds -Relation 'csv'
     foreach ($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
