@@ -530,7 +530,7 @@ function Get-S2DCSVContext {
     if(!$csvStatus) {
         return @{}
     }
-    $ctxt = @{'csv_path' = $volumePath}
+    $ctxt = @{}
     $cfg = Get-JujuCharmConfig
     if(!$cfg['enable-cluster-driver']) {
         Write-JujuWarning "S2D CSV context is ready but cluster driver is disabled"
