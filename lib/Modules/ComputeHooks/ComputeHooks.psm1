@@ -706,18 +706,10 @@ function Set-S2DHealthChecksRelation {
     if(!$s2dRelationCreated -or !$csvRelationCreated) {
         return
     }
-    # In case cluster nodes go down, the Windows fail-over cluster will set the CSV's to offline
-    # and they need to be manually brought back online when nodes come up again. We need to trigger
-    # health checks for the S2D cluster whenever nodes boot for the first time. The s2d-proxy
-    # charm will make sure that the CSV for this unit is online and mounted.
-    $systemStartups = Get-WinEvent -FilterHashtable @{
-        'LogName'='Security'
-        'ID' = 4608 # This event is raised only when Windows is starting up.
-    } -ErrorAction SilentlyContinue
     $rids = Get-JujuRelationIds 's2d-health-check'
     foreach($rid in $rids) {
         Set-JujuRelation -RelationId $rid -Settings @{
-            'system-startups' = $systemStartups.Count
+            'system-check-date' = (Get-Date).ToString()
             'csv-name' = Get-S2DVolumeName
         }
     }
