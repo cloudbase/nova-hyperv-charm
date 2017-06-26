@@ -439,12 +439,19 @@ function Get-S2DVolumeName {
 
 function Confirm-RunningClusterService {
     Start-Service "ClusSvc"
-    Start-ExecuteWithRetry {
-        $clusterSvc = Get-Service -Name "ClusSvc"
-        if($clusterSvc.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Running) {
+    $desiredStatus = [System.ServiceProcess.ServiceControllerStatus]::Running
+    $retry = 0
+    $maxRetries = 12
+    $retryInterval = 5
+    $clusterSvc = Get-Service -Name "ClusSvc"
+    while($clusterSvc.Status -ne $desiredStatus) {
+        if($retry -eq $maxRetries) {
             Throw ("Cluster service is not running. Current status: {0}" -f @($clusterSvc.Status))
         }
-    } -MaxRetryCount 12 -RetryInterval 5 -RetryMessage "Cluster service not yet started. Retrying"
+        Start-Sleep $retryInterval
+        $clusterSvc = Get-Service -Name "ClusSvc"
+        $retry += 1
+    }
 }
 
 function Get-CSVMountPoint {
