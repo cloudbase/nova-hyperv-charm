@@ -347,6 +347,16 @@ function Get-CharmServices {
                     "generator" = (Get-Item "function:Get-SystemContext").ScriptBlock
                     "relation" = "system"
                     "mandatory" = $true
+                },
+                @{
+                    "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
+                    "relation" = "free-rdp"
+                    "mandatory" = $false
+                },
+                @{
+                    "generator" = (Get-Item "function:Get-S2DCSVContext").ScriptBlock
+                    "relation" = "csv"
+                    "mandatory" = $false
                 }
             )
         }
@@ -406,23 +416,6 @@ function Get-CharmServices {
             )
         }
     }
-    $s2dContextGen = @{
-        "generator" = (Get-Item "function:Get-S2DCSVContext").ScriptBlock
-        "relation" = "csv"
-        "mandatory" = $false
-    }
-    if((Confirm-JujuRelationCreated -Relation 'csv')) {
-        $s2dContextGen['mandatory'] = $true
-    }
-    $freeRdpContextGen = @{
-        "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
-        "relation" = "free-rdp"
-        "mandatory" = $false
-    }
-    if((Confirm-JujuRelationCreated -Relation 'free-rdp')) {
-        $freeRdpContextGen['mandatory'] = $true
-    }
-    $jujuCharmServices['nova']['context_generators'] += @($s2dContextGen, $freeRdpContextGen)
     return $jujuCharmServices
 }
 
@@ -723,6 +716,25 @@ function Set-S2DHealthChecksRelation {
     }
 }
 
+function Set-CharmUnitStatus {
+    Param(
+        [array]$IncompleteRelations=@()
+    )
+
+    if(!$IncompleteRelations.Count) {
+        Open-Ports -Ports $NOVA_CHARM_PORTS | Out-Null
+        $msg = "Unit is ready"
+        $s2dCsvCtxt = Get-S2DCSVContext
+        if($s2dCsvCtxt.Count) {
+            $msg += " and clustered"
+        }
+        Set-JujuStatus -Status active -Message $msg
+        return
+    }
+    $IncompleteRelations = $IncompleteRelations | Select-Object -Unique
+    $msg = "Incomplete relations: {0}" -f @($IncompleteRelations -join ', ')
+    Set-JujuStatus -Status blocked -Message $msg
+}
 
 function Invoke-InstallHook {
     if (!(Get-IsNanoServer)) {
@@ -805,14 +817,7 @@ function Invoke-ConfigChangedHook {
     } else {
         $incompleteRelations += $neutronIncompleteRelations
     }
-    if (!$incompleteRelations) {
-        Open-Ports -Ports $NOVA_CHARM_PORTS | Out-Null
-        Set-JujuStatus -Status active -Message "Unit is ready"
-    } else {
-        $incompleteRelations = $incompleteRelations | Select-Object -Unique
-        $msg = "Incomplete relations: {0}" -f @($incompleteRelations -join ', ')
-        Set-JujuStatus -Status blocked -Message $msg
-    }
+    Set-CharmUnitStatus -IncompleteRelations $incompleteRelations
 }
 
 function Invoke-CinderAccountsRelationJoinedHook {
