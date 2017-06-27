@@ -20,23 +20,13 @@ Import-Module JujuWindowsUtils
 Import-Module JujuHelper
 
 
-$COMPUTERNAME = [System.Net.Dns]::GetHostName()
-$DEFAULT_OPENSTACK_VERSION = 'newton'
-$SUPPORTED_OPENSTACK_RELEASES = @('liberty', 'mitaka', 'newton')
+$DEFAULT_OPENSTACK_VERSION = 'ocata'
+$SUPPORTED_OPENSTACK_RELEASES = @('mitaka', 'newton', 'ocata')
+$DEFAULT_JUJU_RESOURCE_CONTENT = "Cloudbase default Juju resource"
 
 # Nova constants
 $NOVA_PRODUCT = @{
     'beta_name' = 'OpenStack Hyper-V Compute Beta'
-    'liberty' = @{
-        'name' = 'OpenStack Hyper-V Compute Liberty'
-        'version' = '12.0.0'
-        'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Liberty_12_0_0.msi#md5=71b77c82dd7990891e108a98a1ecd234'
-            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Liberty_12_0_0.zip#md5=f122e8f71be16fd7f20317e745c20263'
-        }
-        'compute_driver' = 'hyperv.nova.driver.HyperVDriver'
-        'compute_cluster_driver' = $null
-    }
     'mitaka' = @{
         'name' = 'OpenStack Hyper-V Compute Mitaka'
         'version' = '13.0.0'
@@ -57,6 +47,17 @@ $NOVA_PRODUCT = @{
         'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
         'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
     }
+    'ocata' = @{
+        'name' = 'OpenStack Hyper-V Compute Ocata'
+        'version' = '15.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Ocata_15_0_0.msi#md5=8929f3dda9daae267b472929c4870344'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Ocata_15_0_0.zip#md5=4fa48eee30fe7bd1b369f3a821d0f563'
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
+
 }
 $NOVA_CHARM_PORTS = @{
     "tcp" = @("5985", "5986", "3343", "445", "135", "139")
@@ -75,23 +76,15 @@ $env:OVS_RUNDIR = Join-Path $env:ProgramData "openvswitch"
 $OVS_VSWITCHD_SERVICE_NAME = "ovs-vswitchd"
 $OVS_OVSDB_SERVICE_NAME = "ovsdb-server"
 $OVS_JUJU_BR = "juju-br"
-$OVS_EXT_NAME = "Open vSwitch Extension"
-$OVS_PRODUCT_NAME = "Open vSwitch for Hyper-V 2.5"
 $OVS_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\Open vSwitch"
 $OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
-$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.5.0-certified.msi"
+$OVS_PRODUCT_NAME = 'Cloudbase Open vSwitch'
+$OVS_EXT_NAME = "Cloudbase Open vSwitch Extension"
+$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.6.1-certified.msi#md5=840F51250C551957BC0C546B96BD53D6"
 
 # Cinder constants
 $CINDER_PRODUCT = @{
     'beta_name' = 'OpenStack Cinder Volume Beta'
-    'liberty' = @{
-        'name' = 'OpenStack Windows Cinder Volume Liberty'
-        'version' = '7.0.0'
-        'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Liberty_7_0_0.msi#md5=88ca1e0dd60a9d658c75b35735b85e14'
-            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Liberty_7_0_0.zip#md5=22bc540c6663cc74a1cd567db9f77f61'
-        }
-    }
     'mitaka' = @{
         'name' = 'OpenStack Cinder Volume Mitaka'
         'version' = '8.0.0'
@@ -104,12 +97,20 @@ $CINDER_PRODUCT = @{
         'name' = 'OpenStack Cinder Volume Newton'
         'version' = '9.0.0'
         'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Newton_9_0_0.msi'
-            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Newton_9_0_0.zip'
+            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Newton_9_0_0.msi#md5=f534c683b2e79ac1be843071ba9dd76b'
+            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Newton_9_0_0.zip#md5=0f82568b4b2b9773e6b12d1ba6b69442'
+        }
+    }
+    'ocata' = @{
+        'name' = 'OpenStack Cinder Volume Ocata'
+        'version' = '10.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ocata_10_0_0.msi#md5=53af524d93cecfae56fda9dab9a8deb9'
+            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ocata_10_0_0.zip#md5=7a5d9dcdf4b137194f41214599b929a9'
         }
     }
 }
-$CINDER_INSTALL_DIR = Join-Path ${env:SystemDrive} "OpenStack\Cinder"
+$CINDER_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\OpenStack\Cinder"
 $CINDER_ISCSI_BACKEND_NAME = 'iscsi'
 $CINDER_SMB_BACKEND_NAME = 'smb'
 $CINDER_VALID_BACKENDS = @($CINDER_ISCSI_BACKEND_NAME, $CINDER_SMB_BACKEND_NAME)
@@ -133,11 +134,11 @@ $NSCLIENT_DEFAULT_INSTALLER_URLS = @{
 }
 
 # FreeRDP constants
-$FREE_RDP_INSTALL_DIR = Join-Path ${env:ProgramFiles(x86)} "Cloudbase Solutions\FreeRDP-WebConnect"
+$FREE_RDP_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\FreeRDP-WebConnect"
 $FREE_RDP_VCREDIST = 'https://download.microsoft.com/download/2/E/6/2E61CFA4-993B-4DD4-91DA-3737CD5CD6E3/vcredist_x64.exe'
 $FREE_RDP_INSTALLER = @{
     'msi' = 'https://www.cloudbase.it/downloads/FreeRDPWebConnect.msi'
-    'zip' = 'https://cloudbase.it/downloads/FreeRDPWebConnect_Beta.zip'
+    'zip' = 'https://cloudbase.it/downloads/FreeRDPWebConnect.zip'
 }
 $FREE_RDP_DOCUMENT_ROOT = Join-Path $FREE_RDP_INSTALL_DIR "WebRoot"
 $FREE_RDP_CERT_FILE = Join-Path $FREE_RDP_INSTALL_DIR "etc\server.cer"
@@ -223,28 +224,28 @@ function New-ConfigFile {
 
     $incompleteRelations = [System.Collections.Generic.List[object]](New-Object "System.Collections.Generic.List[object]")
     $mergedContext = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
-
-    foreach ($context in $ContextGenerators) {
-        Write-JujuWarning ("Getting context for {0}" -f $context["relation"])
-        $ctxt = Invoke-Command -ScriptBlock $context["generator"]
-        if (!$ctxt.Count -and ($context["mandatory"] -ne $null) -and ($context["mandatory"] -eq $true)) {
-            # Context is empty. Probably peer not ready.
-            Write-JujuWarning ("Context for {0} is EMPTY" -f $context["relation"])
-            $incompleteRelations.Add($context["relation"])
+    foreach ($ctxtGen in $ContextGenerators) {
+        Write-JujuWarning ("Getting context for {0}" -f $ctxtGen["relation"])
+        $ctxt = Invoke-Command -ScriptBlock $ctxtGen["generator"]
+        if (!$ctxt.Count) {
+            if($ctxtGen["mandatory"] -eq $true) {
+                # Context is empty. Probably peer not ready.
+                Write-JujuWarning ("Context for {0} is EMPTY" -f $ctxtGen["relation"])
+                $incompleteRelations.Add($ctxtGen["relation"])
+            }
             continue
         }
-        Write-JujuWarning ("Got {0} context: {1}" -f @($context["relation"], ($ctxt.Keys -join ',' )))
-        foreach ($val in $ctxt.Keys) {
-            $mergedContext[$val] = $ctxt[$val]
+        Write-JujuWarning ("Got {0} context: {1}" -f @($ctxtGen["relation"], ($ctxt.Keys -join ',' )))
+        foreach ($k in $ctxt.Keys) {
+            if($ctxt[$k]) {
+                $mergedContext[$k] = $ctxt[$k]
+            }
         }
     }
-
     if (!$mergedContext.Count) {
         return $incompleteRelations
     }
-
     Start-RenderTemplate -Context $mergedContext -TemplateName $Template -OutFile $OutFile
-
     return $incompleteRelations
 }
 
@@ -361,91 +362,73 @@ function Enable-Service {
 
 function Get-RabbitMQConfig {
     $cfg = Get-JujuCharmConfig
-
     if(!$cfg['rabbit-user']) {
         Throw "'rabbit-user' config option cannot be empty"
     }
     if(!$cfg['rabbit-vhost']) {
         Throw "'rabbit-vhost' config option cannot be empty"
     }
-
     return @($cfg['rabbit-user'], $cfg['rabbit-vhost'])
 }
 
 function Get-MySQLConfig {
     $cfg = Get-JujuCharmConfig
-
     if(!$cfg['database']) {
         Throw "'database' config option cannot be empty"
     }
     if(!$cfg['database-user']) {
         Throw "'database-user' config option cannot be empty"
     }
-
     return @($cfg['database'], $cfg['database-user'])
 }
 
 function Get-RabbitMQContext {
     Write-JujuWarning "Generating context for RabbitMQ"
-
     $required = @{
         "hostname" = $null
         "password" = $null
     }
-
     $optional = @{
         "vhost" = $null
         "username" = $null
         "ha_queues" = $null
     }
-
     $ctx = Get-JujuRelationContext -Relation "amqp" -RequiredContext $required -OptionalContext $optional
-
     $username, $vhost = Get-RabbitMQConfig
-
     if(!$ctx.Count) {
         return @{}
     }
-
     $data = @{}
-
     if (!$ctx["username"]) {
         $data["rabbit_userid"] = $username
     } else {
         $data["rabbit_userid"] = $ctx["username"]
     }
-
     if (!$ctx["vhost"]) {
         $data["rabbit_virtual_host"] = $vhost
     } else {
         $data["rabbit_virtual_host"] = $ctx["vhost"]
     }
-
     if ($ctx["ha_queues"]) {
         $data["rabbit_ha_queues"] = "True"
     } else {
         $data["rabbit_ha_queues"] = "False"
     }
-
     $data["rabbit_host"] = $ctx["hostname"]
     $data["rabbit_password"] = $ctx["password"]
-
     return $data
 }
 
 function Get-GlanceContext {
     Write-JujuWarning "Getting glance context"
-
     $required = @{
         "glance-api-server" = $null
     }
     $ctx = Get-JujuRelationContext -Relation 'image-service' -RequiredContext $required
-
     $new = @{}
     foreach ($i in $ctx.Keys) {
         $new[$i.Replace("-", "_")] = $ctx[$i]
     }
-
     return $new
 }
 
@@ -455,13 +438,10 @@ function Get-MySQLContext {
         "password" = $null
     }
     $ctxt = Get-JujuRelationContext -Relation "mysql-db" -RequiredContext $requiredCtxt
-
     if(!$ctxt.Count) {
         return @{}
     }
-
     $database, $databaseUser = Get-MySQLConfig
-
     return @{
         'db_host' = $ctxt['db_host']
         'db_name' = $database
@@ -472,18 +452,15 @@ function Get-MySQLContext {
 
 function Get-ConfigContext {
     $cfg = Get-JujuCharmConfig
-
     $ctxt = @{}
-    foreach ($config in $cfg.GetEnumerator()) {
-        $name = $config.Key.Replace("-", "_")
-        if ($config.Value.Gettype() -is [System.String]) {
-            $value = $config.Value.Replace('/', '\')
-        } else {
-            $value = $config.Value
+    foreach ($k in $cfg.Keys) {
+        if($cfg[$k] -eq $null) {
+            continue
         }
-        $ctxt[$name] = $value
+        $configName = $k -replace "-", "_"
+        $configValue = [string]$cfg[$k] -replace  "/", "\"
+        $ctxt[$configName] = $configValue
     }
-
     return $ctxt
 }
 
@@ -505,7 +482,6 @@ function Get-InstalledOpenStackProduct {
     if(Get-IsNanoServer) {
         return $null
     }
-
     switch($Project) {
         "Nova" {
             $productConstants = $NOVA_PRODUCT
@@ -514,9 +490,7 @@ function Get-InstalledOpenStackProduct {
             $productConstants = $CINDER_PRODUCT
         }
     }
-
     $release = Get-OpenstackVersion
-
     $productName = $productConstants[$release]['name']
     $product = Get-ManagementObject -ClassName 'Win32_Product' -Filter "Name='$productName'"
     if(!$product) {
@@ -527,7 +501,6 @@ function Get-InstalledOpenStackProduct {
             return $null
         }
     }
-
     return $product
 }
 
@@ -593,12 +566,10 @@ function Uninstall-WindowsProduct {
         Write-JujuWarning "Cannot uninstall Windows products on Nano server"
         return
     }
-
     $params = @{
         'ClassName' = "Win32_Product"
         'Filter' = "Name='$Name'"
     }
-
     if ($PSVersionTable.PSVersion.Major -lt 4) {
         $product = Get-WmiObject @params
         $result = $product.Uninstall()
@@ -606,7 +577,6 @@ function Uninstall-WindowsProduct {
         $product = Get-CimInstance @params
         $result = Invoke-CimMethod -InputObject $product -MethodName "Uninstall"
     }
-
     if($result.ReturnValue) {
         Throw "Failed to uninstall product '$Name'"
     }
