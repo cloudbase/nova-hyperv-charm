@@ -43,7 +43,13 @@ function Invoke-InterfacesDHCPRenew {
     <#
     .SYNOPSIS
      Renews DHCP for every NIC on the system with DHCP enabled.
+    .PARAMETER TimeoutAfterWaitingDHCP
+     Timeout in seconds after which the function no longer waits for the DHCP
+     response to arrive.
     #>
+    Param(
+        [uint32]$TimeoutAfterWaitingDHCP=15
+    )
 
     $interfaces = Get-CimInstance -Class Win32_NetworkAdapterConfiguration | Where-Object {
         $_.IPEnabled -eq $true -and $_.DHCPEnabled -eq $true -and $_.DHCPServer -eq "255.255.255.255"
@@ -51,6 +57,23 @@ function Invoke-InterfacesDHCPRenew {
     if($interfaces) {
         $interfaces.InterfaceIndex | Invoke-DHCPRenew -ErrorAction SilentlyContinue | Out-Null
     }
+    # Wait with a timeout for all interfaces to get a DHCP response
+    $ready = $true
+    $startTime = Get-Date
+    do {
+        foreach($index in $interfaces.Index) {
+            $interface = Get-CimInstance -Class Win32_NetworkAdapterConfiguration -Filter "Index=$index"
+            if(!$interface.DHCPLeaseObtained) {
+                $ready = $false
+            }
+        }
+        $diff = (Get-Date) - $startTime
+        if($ready -or ($diff.Seconds -gt $TimeoutAfterWaitingDHCP)) {
+            break
+        }
+        Write-JujuWarning "Waiting for all DHCP interfaces to get a DHCP response"
+        Start-Sleep -Seconds 1
+    } until($ready)
 }
 
 function Confirm-IPIsInDataNetwork {
@@ -71,10 +94,6 @@ function Confirm-IPIsInDataNetwork {
     $port = Get-NetAdapter -InterfaceIndex $IP.IfIndex -ErrorAction SilentlyContinue
     if(!$port) {
         Write-JujuWarning ("Port with index '{0}' no longer exists" -f @($IP.IfIndex))
-        return $false
-    }
-    if($port.DriverFileName -eq "vmswitch.sys") {
-        Write-JujuWarning "Port '$port' is a Hyper-V network adapter. Skipping"
         return $false
     }
     $netDetails = $DataNetwork.Split("/")
@@ -127,14 +146,21 @@ function Get-DataPortsFromDataNetwork {
     $configuredAddresses = Get-NetIPAddress -AddressFamily IPv4
     foreach ($i in $configuredAddresses) {
         if(Confirm-IPIsInDataNetwork -DataNetwork $cfg['os-data-network'] -IP $i) {
+            $isMgmtOSAdapter = $false
             $adapter = Get-NetAdapter -InterfaceIndex $i.IfIndex
             if($adapter.DeviceID -in $managementOSAdapters.DeviceID) {
+                $isMgmtOSAdapter = $true
                 $adapter = $vmSwitchNetAdapter
             }
             if($adapter.ifIndex -in $ports.ifIndex) {
                 continue
             }
             $adapterInfo = Get-InterfaceIpInformation -InterfaceIndex $i.IfIndex
+            if($isMgmtOSAdapter) {
+                $adapterInfo['name'] = $vmSwitchNetAdapter.Name
+                $adapterInfo['index'] = $vmSwitchNetAdapter.InterfaceIndex
+                $adapterInfo['mac'] = $vmSwitchNetAdapter.MacAddress
+            }
             $ovsAdaptersInfo.Add($adapterInfo)
             $ports.Add($adapter)
         }
@@ -190,7 +216,10 @@ function Set-OVSAdapterAddress {
         New-NetIPAddress -IPAddress $i["IPAddress"] -PrefixLength $i["PrefixLength"] -InterfaceIndex $ovsIf.ifIndex | Out-Null
     }
     if($AdapterInfo['default_gateway']) {
-        New-NetRoute -DestinationPrefix "0.0.0.0/0" -NextHop $AdapterInfo['default_gateway'] -InterfaceIndex $ovsIf.ifIndex | Out-Null
+        $hasRoute = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -NextHop $AdapterInfo['default_gateway'] -ErrorAction SilentlyContinue
+        if(!$hasRoute) {
+            New-NetRoute -DestinationPrefix "0.0.0.0/0" -NextHop $AdapterInfo['default_gateway'] -InterfaceIndex $ovsIf.ifIndex | Out-Null
+        }
     }
     if($AdapterInfo['nameservers'] -and ($AdapterInfo['nameservers'].Count -gt 0)) {
         Set-DnsClientServerAddress -ServerAddresses $AdapterInfo['nameservers'] -InterfaceIndex $ovsIf.ifIndex -Confirm:$false | Out-Null
