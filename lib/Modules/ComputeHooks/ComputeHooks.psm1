@@ -54,6 +54,7 @@ function Install-Prerequisites {
     if ($stat.RestartNeeded) {
         $rebootNeeded = $true
     }
+    Install-WindowsFeatures -Features @('RSAT-Hyper-V-Tools')
     return $rebootNeeded
 }
 
@@ -155,7 +156,7 @@ function Install-NovaFromZip {
     if (!(Test-Path $configDir)) {
         New-Item -ItemType Directory $configDir | Out-Null
         $distro = Get-OpenstackVersion
-        if($distro -in @("mitaka", "newton")) {
+        if($distro -eq "newton") {
             $templatesDir = Join-Path (Get-JujuCharmDir) "templates"
             $policyFile = Join-Path $templatesDir "$distro\policy.json"
             Copy-Item $policyFile $configDir | Out-Null
@@ -566,6 +567,7 @@ function Get-CloudComputeContext {
         "service_username" = $null
         "service_password" = $null
         "region" = $null
+        "api_version" = $null
     }
     $optionalCtx = @{
         "neutron_url" = $null
@@ -614,6 +616,7 @@ function Get-HGSContext {
 
 function Get-SystemContext {
     $release = Get-OpenstackVersion
+    $ovsDBSockFile = Join-Path $env:ProgramData "openvswitch\db.sock"
     $ctxt = @{
         "install_dir" = "$NOVA_INSTALL_DIR"
         "force_config_drive" = "False"
@@ -623,6 +626,7 @@ function Get-SystemContext {
         "compute_driver" = $NOVA_PRODUCT[$release]['compute_driver']
         "my_ip" = Get-JujuUnitPrivateIP
         "lock_dir" = "$NOVA_DEFAULT_LOCK_DIR"
+        "ovs_db_sock_file" = "$ovsDBSockFile"
     }
     if(!(Test-Path -Path $ctxt['lock_dir'])) {
         New-Item -ItemType Directory -Path $ctxt['lock_dir']
