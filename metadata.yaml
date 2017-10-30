@@ -10,6 +10,10 @@ description: |
 tags:
   - openstack
   - windows
+  - compute
+  - hyperv
+  - microsoft
+  - hypervisor
 series:
   - win2012
   - win2012r2

@@ -9,12 +9,12 @@ options:
     description: "Enable verbose logging."
   openstack-version:
     type: string
-    default: ocata
+    default: pike
     description: |
       Version of OpenStack Nova Compute to install. Choices are:
-       * mitaka
        * newton
        * ocata
+       * pike
   ad-computer-group:
     type: string
     default: "nova-group"

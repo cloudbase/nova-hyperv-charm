@@ -20,23 +20,13 @@ Import-Module JujuWindowsUtils
 Import-Module JujuHelper
 
 
-$DEFAULT_OPENSTACK_VERSION = 'ocata'
-$SUPPORTED_OPENSTACK_RELEASES = @('mitaka', 'newton', 'ocata')
+$DEFAULT_OPENSTACK_VERSION = 'pike'
+$SUPPORTED_OPENSTACK_RELEASES = @('newton', 'ocata', 'pike')
 $DEFAULT_JUJU_RESOURCE_CONTENT = "Cloudbase default Juju resource"
 
 # Nova constants
 $NOVA_PRODUCT = @{
     'beta_name' = 'OpenStack Hyper-V Compute Beta'
-    'mitaka' = @{
-        'name' = 'OpenStack Hyper-V Compute Mitaka'
-        'version' = '13.0.0'
-        'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Mitaka_13_0_0.msi#md5=af7421fa96bb0af46c4107550852056e'
-            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Mitaka_13_0_0.zip#md5=9efe31e847c59886a57007f9dddcfffc'
-        }
-        'compute_driver' = 'hyperv.nova.driver.HyperVDriver'
-        'compute_cluster_driver' = 'hyperv.nova.cluster.driver.HyperVClusterDriver'
-    }
     'newton' = @{
         'name' = 'OpenStack Hyper-V Compute Newton'
         'version' = '14.0.1'
@@ -57,7 +47,16 @@ $NOVA_PRODUCT = @{
         'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
         'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
     }
-
+    'pike' = @{
+        'name' = 'OpenStack Hyper-V Compute Pike'
+        'version' = '16.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Pike_16_0_0.msi#md5=973f1f1c022ee7813e5c033f731689f0'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Pike_16_0_0.zip#md5=3f5c27673e8d3f95e34caa490bd74052'
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
 }
 $NOVA_CHARM_PORTS = @{
     "tcp" = @("5985", "5986", "3343", "445", "135", "139")
@@ -80,19 +79,11 @@ $OVS_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\Open vSwit
 $OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
 $OVS_PRODUCT_NAME = 'Cloudbase Open vSwitch'
 $OVS_EXT_NAME = "Cloudbase Open vSwitch Extension"
-$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.6.1-certified.msi#md5=840F51250C551957BC0C546B96BD53D6"
+$OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.7.0-certified.msi#md5=9cd0aee3911c04b21c03457fdc455931"
 
 # Cinder constants
 $CINDER_PRODUCT = @{
     'beta_name' = 'OpenStack Cinder Volume Beta'
-    'mitaka' = @{
-        'name' = 'OpenStack Cinder Volume Mitaka'
-        'version' = '8.0.0'
-        'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Mitaka_8_0_0.msi#md5=122cfccd70daf4273bcd486b2ed1c2ed'
-            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Mitaka_8_0_0.zip#md5=9b988012a4bc472a50710f5f5adffb79'
-        }
-    }
     'newton' = @{
         'name' = 'OpenStack Cinder Volume Newton'
         'version' = '9.0.0'
@@ -107,6 +98,14 @@ $CINDER_PRODUCT = @{
         'default_installer_urls' = @{
             'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ocata_10_0_0.msi#md5=53af524d93cecfae56fda9dab9a8deb9'
             'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ocata_10_0_0.zip#md5=7a5d9dcdf4b137194f41214599b929a9'
+        }
+    }
+    'pike' = @{
+        'name' = 'OpenStack Cinder Volume Pike'
+        'version' = '10.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Pike_11_0_0.msi#md5=31b8988337e3ecf1b628f74019281a0d'
+            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Pike_11_0_0.zip#md5=e1a59e852e06c2db2e59ce4ab926c403'
         }
     }
 }
@@ -129,8 +128,8 @@ $CINDER_DEFAULT_DEFAULT_VOLUME_FORMAT = 'vhdx'
 # Nsclient constants
 $NSCLIENT_INSTALL_DIR = Join-Path ${env:ProgramFiles} "NSClient++"
 $NSCLIENT_DEFAULT_INSTALLER_URLS = @{
-    'msi' = 'https://github.com/mickem/nscp/releases/download/0.5.0.62/NSCP-0.5.0.62-x64.msi#md5=74a460dedbd98659b8bad24aa91fc29c'
-    'zip' = 'https://github.com/mickem/nscp/releases/download/0.5.0.62/nscp-0.5.0.62-x64.zip#md5=a766dfdb5d9452b3a7d1aec02ce89106'
+    'msi' = 'https://github.com/mickem/nscp/releases/download/0.5.1.44/NSCP-0.5.1.44-x64.msi#md5=7a5cb93258c6397b43f6b1deb9d0e5ae'
+    'zip' = 'https://github.com/mickem/nscp/releases/download/0.5.1.44/NSCP-0.5.1.44-x64.zip#md5=ec7c73e1b1745e3f3cc9345319027a6f'
 }
 
 # FreeRDP constants
