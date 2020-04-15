@@ -20,8 +20,8 @@ Import-Module JujuWindowsUtils
 Import-Module JujuHelper
 
 
-$DEFAULT_OPENSTACK_VERSION = 'pike'
-$SUPPORTED_OPENSTACK_RELEASES = @('newton', 'ocata', 'pike')
+$DEFAULT_OPENSTACK_VERSION = 'queens'
+$SUPPORTED_OPENSTACK_RELEASES = @('newton', 'ocata', 'pike', 'queens', 'rocky', 'stein')
 $DEFAULT_JUJU_RESOURCE_CONTENT = "Cloudbase default Juju resource"
 
 # Nova constants
@@ -57,6 +57,36 @@ $NOVA_PRODUCT = @{
         'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
         'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
     }
+    'queens' = @{
+        'name' = 'OpenStack Hyper-V Compute Queens'
+        'version' = '17.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Queens_17_0_0.msi#md5=78082d7b739e9a6580d280a368a3aa72'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Queens_17_0_0.zip#md5=3f5c27673e8d3f95e34caa490bd74052'
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
+    'rocky' = @{
+        'name' = 'OpenStack Hyper-V Compute Rocky'
+        'version' = '18.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Rocky_18_0_3.msi#md5=7ab07a79617aa10e1141738e0e63fa99'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Rocky_18_0_3.msi#md5=7ab07a79617aa10e1141738e0e63fa99'
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
+    'stein' = @{
+        'name' = 'OpenStack Hyper-V Compute Stein'
+        'version' = '19.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'http://cloudbase.it/downloads/HyperVNovaCompute_Stein_19_0_0.msi#md5='
+            'zip' = 'http://cloudbase.it/downloads/HyperVNovaCompute_Stein_19_0_0.msi#md5='
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
 }
 $NOVA_CHARM_PORTS = @{
     "tcp" = @("5985", "5986", "3343", "445", "135", "139")
@@ -70,11 +100,11 @@ $NOVA_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\OpenStack
 $NOVA_VALID_NETWORK_TYPES = @('hyperv', 'ovs')
 $NOVA_COMPUTE_SERVICE_NAME = "nova-compute"
 $NEUTRON_HYPERV_AGENT_SERVICE_NAME = "neutron-hyperv-agent"
-$NEUTRON_OVS_AGENT_SERVICE_NAME = "neutron-openvswitch-agent"
+$NEUTRON_OVS_AGENT_SERVICE_NAME = "neutron-ovs-agent"
 $env:OVS_RUNDIR = Join-Path $env:ProgramData "openvswitch"
 $OVS_VSWITCHD_SERVICE_NAME = "ovs-vswitchd"
 $OVS_OVSDB_SERVICE_NAME = "ovsdb-server"
-$OVS_JUJU_BR = "juju-br"
+$OVS_DEFAULT_BRIDGE_NAME = "juju-br"
 $OVS_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\Open vSwitch"
 $OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
 $OVS_PRODUCT_NAME = 'Cloudbase Open vSwitch'
@@ -106,6 +136,14 @@ $CINDER_PRODUCT = @{
         'default_installer_urls' = @{
             'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Pike_11_0_0.msi#md5=31b8988337e3ecf1b628f74019281a0d'
             'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Pike_11_0_0.zip#md5=e1a59e852e06c2db2e59ce4ab926c403'
+        }
+    }
+    'queens' = @{
+        'name' = 'OpenStack Cinder Volume Queens'
+        'version' = '12.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Queens_12_0_0.msi#md5=7ec3cd284ecb56250ce4bb82eb529b0d'
+            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Queens_12_0_0.zip#md5=e1a59e852e06c2db2e59ce4ab926c403'
         }
     }
 }
@@ -326,8 +364,16 @@ function Get-InstallerPath {
 
     $file = ([System.Uri]$url).Segments[-1]
     $tempDownloadFile = Join-Path $env:TEMP $file
+    $proxy = $cfg["proxy"]
     Start-ExecuteWithRetry {
-        $out = Invoke-FastWebRequest -Uri $url -OutFile $tempDownloadFile
+        $params = @{
+            "Uri" = $url
+            "OutFile" = $tempDownloadFile
+        }
+        if($proxy) {
+            $params["Proxy"] = $proxy
+        }
+        $out = Invoke-FastWebRequest @params
     } -RetryMessage "Installer download failed. Retrying"
 
     return $tempDownloadFile
@@ -415,6 +461,17 @@ function Get-RabbitMQContext {
     }
     $data["rabbit_host"] = $ctx["hostname"]
     $data["rabbit_password"] = $ctx["password"]
+    $rids = Get-JujuRelationIds -Relation "amqp"
+	foreach ($rid in $rids) {
+		$units = Get-JujuRelatedUnits -RelationID $rid
+		foreach ($unit in $units) {
+			$relationData = Get-JujuRelation -RelationID $rid -Unit $unit
+			$data["rabbit_hosts"] = @($relationData['hostname'])
+			$rabbitConnection += @("$($data['rabbit_userid']):$($relationData['password'])@$($relationData['hostname']):5672")
+		}
+	}
+	$rabbitConnection = [string]::Join(',',$rabbitConnection)
+	$data["transport_url"] = "rabbit://$rabbitConnection/$($data["rabbit_virtual_host"])"
     return $data
 }
 

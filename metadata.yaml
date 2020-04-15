@@ -20,6 +20,7 @@ series:
   - win2012hv
   - win2012hvr2
   - win2016
+  - win2016hv
   - win2016nano
 provides:
   cloud-compute:

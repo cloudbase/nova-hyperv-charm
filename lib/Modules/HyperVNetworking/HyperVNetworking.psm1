@@ -185,6 +185,7 @@ function Get-InterfaceIpInformation {
     $adapterInfo["name"] = $adapter.Name
     $adapterInfo["index"] = $InterfaceIndex
     $adapterInfo["mac"] = $adapter.MacAddress
+    $adapterInfo["vlan"] = $adapter.VlanID
     $ips = Get-IPSAsArray -InterfaceIndex $InterfaceIndex
     if($ips.Count) {
         $adapterInfo["addresses"] = $ips
