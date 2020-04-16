@@ -38,7 +38,6 @@ $OVS_SERVICES = @{
     }
 }
 
-
 function Invoke-InterfacesDHCPRenew {
     <#
     .SYNOPSIS
@@ -192,8 +191,8 @@ function Set-OVSAdapterAddress {
         [Parameter(Mandatory=$true)]
         [Object]$AdapterInfo
     )
-
-    $ovsIf = Get-NetAdapter $OVS_JUJU_BR
+    $ovsBridgeName = Get-JujuVMSwitchName
+    $ovsIf = Get-NetAdapter $ovsBridgeName
     if(!$ovsIf) {
         Throw "Could not find OVS adapter."
     }
@@ -227,6 +226,7 @@ function Set-OVSAdapterAddress {
 }
 
 function New-OVSInternalInterfaces {
+    $ovsBridgeName = Get-JujuVMSwitchName
     $ovsAdaptersInfo = Get-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info"
     if(!$ovsAdaptersInfo) {
         Throw "Failed to find OVS adapters info"
@@ -239,15 +239,20 @@ function New-OVSInternalInterfaces {
         $adapterInfo = $i
         break
     }
-    Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-br", $OVS_JUJU_BR) | Out-Null
-    Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-port", $OVS_JUJU_BR, $adapterInfo["name"]) | Out-Null
+    Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-br", $ovsBridgeName) | Out-Null
+    Invoke-JujuCommand -Command @($OVS_VSCTL, "--may-exist", "add-port", $ovsBridgeName, $adapterInfo["name"]) | Out-Null
+    if ($adapterInfo["vlan"]) {
+        Write-JujuWarning "Adapter $($adapterInfo["name"]) is configured with VLAN ID. Adding the VLAN ID to the OVS bridge $ovsBridgeName"
+        Invoke-JujuCommand -Command @($OVS_VSCTL, "set", "port", $ovsBridgeName, "tag=$($adapterInfo["vlan"])") | Out-Null
+    }
     # Enable the OVS adapter
-    Get-Netadapter $OVS_JUJU_BR | Enable-NetAdapter | Out-Null
+    Get-Netadapter $ovsBridgeName | Enable-NetAdapter | Out-Null
     Set-OVSAdapterAddress -AdapterInfo $adapterInfo
 }
 
 function Get-OVSLocalIP {
-    $ovsAdapter = Get-Netadapter $OVS_JUJU_BR -ErrorAction SilentlyContinue
+    $ovsBridgeName = Get-JujuVMSwitchName
+    $ovsAdapter = Get-Netadapter $ovsBridgeName -ErrorAction SilentlyContinue
     if(!$ovsAdapter) {
         $netType = Get-NetType
         if($netType -eq "ovs") {
@@ -302,8 +307,16 @@ function Get-OVSInstallerPath {
     }
     $file = ([System.Uri]$installerUrl).Segments[-1]
     $tempDownloadFile = Join-Path $env:TEMP $file
+    $proxy = $cfg["proxy"]
     Start-ExecuteWithRetry {
-        Invoke-FastWebRequest -Uri $installerUrl -OutFile $tempDownloadFile | Out-Null
+        $params = @{
+            "Uri" = $installerUrl
+            "OutFile" = $tempDownloadFile
+        }
+        if($proxy) {
+            $params["Proxy"] = $proxy
+        }
+        Invoke-FastWebRequest @params | Out-Null
     } -RetryMessage "OVS installer download failed. Retrying"
     return $tempDownloadFile
 }
@@ -338,39 +351,6 @@ function Disable-OVS {
     Disable-OVSExtension
 }
 
-function Enable-OVS {
-    Enable-OVSExtension
-    $ovsServices = @($OVS_OVSDB_SERVICE_NAME, $OVS_VSWITCHD_SERVICE_NAME)
-    foreach($svcName in $ovsServices) {
-        Enable-Service $svcName
-        Start-Service $svcName
-    }
-    Invoke-JujuCommand -Command @($OVS_VSCTL, 'set-manager', 'ptcp:6640:127.0.0.1')
-}
-
-function New-OVSWindowsServices {
-    $ovsSvc = Get-ManagementObject -ClassName Win32_Service -Filter "Name='$OVS_VSWITCHD_SERVICE_NAME'"
-    $ovsDBSvc = Get-ManagementObject -ClassName Win32_Service -Filter "Name='$OVS_OVSDB_SERVICE_NAME'"
-    if(!$ovsSvc -and !$ovsDBSvc) {
-        Write-JujuWarning "OVS services are not created yet"
-        return
-    }
-    if(($ovsSvc.PathName -eq $OVS_SERVICES[$OVS_VSWITCHD_SERVICE_NAME]['binary_path']) -and
-       ($ovsDBSvc.PathName -eq $OVS_SERVICES[$OVS_OVSDB_SERVICE_NAME]['binary_path'])) {
-        Write-JujuWarning "OVS services are correctly configured"
-        return
-    }
-    Stop-Service $OVS_VSWITCHD_SERVICE_NAME
-    Stop-Service $OVS_OVSDB_SERVICE_NAME -Force
-    Remove-WindowsServices -Names @($OVS_VSWITCHD_SERVICE_NAME, $OVS_OVSDB_SERVICE_NAME)
-    foreach($svcName in @($OVS_OVSDB_SERVICE_NAME, $OVS_VSWITCHD_SERVICE_NAME)) {
-        New-Service -Name $svcName -DisplayName $OVS_SERVICES[$svcName]['display_name'] `
-                    -BinaryPathName $OVS_SERVICES[$svcName]['binary_path'] -Confirm:$false
-        Start-Service -Name $svcName
-        Set-Service -Name $svcName -StartupType Automatic
-    }
-}
-
 function Install-OVS {
     if (Get-ComponentIsInstalled -Name $OVS_PRODUCT_NAME -Exact) {
         Write-JujuWarning "OVS is already installed"
@@ -381,7 +361,6 @@ function Install-OVS {
     $logFile = Join-Path $env:APPDATA "ovs-installer-log.txt"
     $extraParams = @("INSTALLDIR=`"$OVS_INSTALL_DIR`"")
     Install-Msi -Installer $installerPath -LogFilePath $logFile -ExtraArgs $extraParams
-    New-OVSWindowsServices
 }
 
 function Uninstall-OVS {

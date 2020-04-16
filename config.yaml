@@ -7,14 +7,16 @@ options:
     type: boolean
     default: False
     description: "Enable verbose logging."
+  proxy:
+    type: string
+    description: "A http proxy to use when downloading installers"
   openstack-version:
     type: string
-    default: pike
+    default: train
     description: |
       Version of OpenStack Nova Compute to install. Choices are:
-       * newton
-       * ocata
-       * pike
+       * stein
+       * train
   ad-computer-group:
     type: string
     default: "nova-group"
@@ -41,6 +43,11 @@ options:
       Enables the Hyper-V compute driver for clustering. This requires at least two Hyper-V compute
       joined to a cluster.
       NOTE: Available only in releases >= Mitaka
+  enable-multipath-io:
+    type: boolean
+    default: False
+    description: |
+      Enable MPIO feature. This setting requires a restart.
   csv-performance-size:
     type: int
     description: |
@@ -124,6 +131,11 @@ options:
       This flag is needed to support live migration to hosts with different
       CPU features and checked during instance creation in order to limit
       the CPU features used by the instance.
+  cross-az-attach:
+    type: boolean
+    default: True
+    description: |
+      Allow Nova or not to attach Cinder volumes that are not in the same AZ
   change-hostname:
     type: boolean
     default: False
@@ -139,3 +151,17 @@ options:
       combination of the first 14 (or less, depending on how many digits the unit number has)
       characters of the charm name and the unit number. While this is not infallible,
       It does have less of a chance of creating hostname conflicts.
+  ssl-ca:
+    type: string
+    default:
+    description: |
+      base64-encoded SSL CA to use with the certificate and key provided -
+      this is only required if you are providing a privately signed ssl_cert
+      and ssl_key.
+  format-raw-devices:
+    type: boolean
+    default: False
+    description: |
+      When True will format and initialize all existing raw devices.
+      It will not touch the OS drive or drives that already have a partition table.
+    
