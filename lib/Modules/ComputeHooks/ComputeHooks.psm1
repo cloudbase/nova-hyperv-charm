@@ -55,6 +55,9 @@ function Install-Prerequisites {
         $rebootNeeded = $true
     }
     Install-WindowsFeatures -Features @('RSAT-Hyper-V-Tools')
+    if (Enable-MPIO) {
+        $rebootNeeded = $true
+    }
     return $rebootNeeded
 }
 
@@ -73,8 +76,8 @@ function Enable-MPIO {
         return $false
     }
     Write-JujuWarning "Enabling MultiPathIO feature"
-    Enable-WindowsOptionalFeature -Online -FeatureName MultiPathIO -NoRestart -ErrorAction SilentlyContinue
-    return $true
+    $status = Enable-WindowsOptionalFeature -Online -FeatureName MultiPathIO -NoRestart
+    return $status.RestartNeeded
 }
 
 function New-ExeServiceWrapper {
@@ -472,11 +475,6 @@ function Get-FreeRDPContext {
     if (!$ctx.Count) {
         return @{}
     }
-    $cfg = Get-JujuCharmConfig
-    $rdpBaseUrl = $cfg['html5-console-url']
-    if ($rdpBaseUrl) {
-        $ctx['html5_proxy_base_url'] = $rdpBaseUrl
-    }
     return $ctx
 }
 
@@ -702,10 +700,20 @@ function Get-CharmConfigContext {
     if($ctxt['ssl_ca']) {
         $ca_pem = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($ctxt['ssl_ca']))
         $ca_file = Join-Path $NOVA_INSTALL_DIR "etc\ca.pem"
-        $ca_pem | Set-Content $ca_file
+        Set-Content $ca_file $ca_pem
         $ctxt['ssl_ca_file'] = $ca_file
     }
     return $ctxt
+}
+
+function FormatRawDisks {
+    $cfg = Get-JujuCharmConfig
+    if ($cfg['format-raw-devices']) {
+        Get-Disk | Where partitionstyle -eq 'raw' | `
+        Initialize-Disk -PartitionStyle GPT -PassThru | `
+        New-Partition -AssignDriveLetter -UseMaximumSize | `
+        Format-Volume -FileSystem NTFS -Confirm:$false
+    }
 }
 
 function Uninstall-Nova {
@@ -810,17 +818,10 @@ function Invoke-InstallHook {
     }
     Start-TimeResync
     
-    $cfg = Get-JujuCharmConfig
-    if ($cfg['format-raw-devices']) {
-        Get-Disk | Where partitionstyle -eq 'raw' | `
-        Initialize-Disk -PartitionStyle GPT -PassThru | `
-        New-Partition -AssignDriveLetter -UseMaximumSize | `
-        Format-Volume -FileSystem NTFS -Confirm:$false
-    }
-    
-    $mpioReboot = Enable-MPIO
+    FormatRawDisks
+
     $prereqReboot = Install-Prerequisites
-    if ($prereqReboot -Or $mpioReboot) {
+    if ($prereqReboot) {
         Invoke-JujuReboot -Now
     }
     Set-HyperVUniqueMACAddressesPool

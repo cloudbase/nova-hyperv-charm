@@ -12,13 +12,11 @@ options:
     description: "A http proxy to use when downloading installers"
   openstack-version:
     type: string
-    default: queens
+    default: train
     description: |
       Version of OpenStack Nova Compute to install. Choices are:
-       * newton
-       * ocata
-       * pike
-       * queens
+       * stein
+       * train
   ad-computer-group:
     type: string
     default: "nova-group"
@@ -50,17 +48,6 @@ options:
     default: False
     description: |
       Enable MPIO feature. This setting requires a restart.
-  etcd-host:
-    type: string
-    description: |
-      The IP address or hostname for the ETCD service for use on Nova locking mechanism.
-      For now, Nova only works with http endpoints. Only ETCD3 is supported
-      This is mandatory when using the cluster driver
-  etcd-port:
-    type: int
-    default: 2789
-    description: |
-      The port used for communicating with etcd.
   csv-performance-size:
     type: int
     description: |
@@ -133,12 +120,6 @@ options:
       Neutron agent to use. Valid options are:
         * hyperv
         * ovs
-  vxlan-udp-port:
-    type: int
-    description: |
-      Port for VXLAN tunnels. If the value is not set, the default port '4789' is
-      used. Usefull when default vxlan udp port is already used.
-      This value must be the same as neutron-gateway
   max-concurrent-live-migrations:
     type: int
     default: 1
@@ -155,14 +136,6 @@ options:
     default: True
     description: |
       Allow Nova or not to attach Cinder volumes that are not in the same AZ
-  html5-console-url:
-    type: string
-    description: |
-      Set a custom URL for the RDP console. The string is in the form of
-      http://hostname:port
-      The port must match the one on the free-rdp charm if no port mapping
-      is being done.
-      If not set, it will be taken from the Free-RDP relation.
   change-hostname:
     type: boolean
     default: False

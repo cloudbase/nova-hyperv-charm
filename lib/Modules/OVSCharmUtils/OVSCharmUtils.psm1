@@ -38,20 +38,6 @@ $OVS_SERVICES = @{
     }
 }
 
-
-function Get-OVSBridgeName {
-    $netType = Get-NetType
-    $vmSwitchName = Get-JujuVMSwitchName
-    if ($netType -eq 'ovs') {
-        $cfg = Get-JujuCharmConfig
-        $managementOS = $cfg['vmswitch-management']
-        if (!$managementOS) {
-            return $OVS_DEFAULT_BRIDGE_NAME
-        }
-    }
-    return $vmSwitchName
-}
-
 function Invoke-InterfacesDHCPRenew {
     <#
     .SYNOPSIS
@@ -205,7 +191,7 @@ function Set-OVSAdapterAddress {
         [Parameter(Mandatory=$true)]
         [Object]$AdapterInfo
     )
-    $ovsBridgeName = Get-OVSBridgeName
+    $ovsBridgeName = Get-JujuVMSwitchName
     $ovsIf = Get-NetAdapter $ovsBridgeName
     if(!$ovsIf) {
         Throw "Could not find OVS adapter."
@@ -240,7 +226,7 @@ function Set-OVSAdapterAddress {
 }
 
 function New-OVSInternalInterfaces {
-    $ovsBridgeName = Get-OVSBridgeName
+    $ovsBridgeName = Get-JujuVMSwitchName
     $ovsAdaptersInfo = Get-CharmState -Namespace "novahyperv" -Key "ovs_adapters_info"
     if(!$ovsAdaptersInfo) {
         Throw "Failed to find OVS adapters info"
@@ -265,7 +251,7 @@ function New-OVSInternalInterfaces {
 }
 
 function Get-OVSLocalIP {
-    $ovsBridgeName = Get-OVSBridgeName
+    $ovsBridgeName = Get-JujuVMSwitchName
     $ovsAdapter = Get-Netadapter $ovsBridgeName -ErrorAction SilentlyContinue
     if(!$ovsAdapter) {
         $netType = Get-NetType
