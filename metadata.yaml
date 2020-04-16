@@ -52,3 +52,5 @@ requires:
     interface: hgs
   free-rdp:
     interface: free-rdp
+  etcd:
+    interface: etcd

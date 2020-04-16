@@ -350,6 +350,7 @@ function Restart-Nova {
 }
 
 function Get-CharmServices {
+    $cfg = Get-JujuCharmConfig
     $distro = Get-OpenstackVersion
     $novaConf = Join-Path $NOVA_INSTALL_DIR "etc\nova.conf"
     $neutronHypervConf = Join-Path $NOVA_INSTALL_DIR "etc\neutron_hyperv_agent.conf"
@@ -461,6 +462,15 @@ function Get-CharmServices {
                 }
             )
         }
+    }
+    if($cfg['enable-cluster-driver']) {
+        $jujuCharmServices['nova']['context_generators'] += @(
+            @{
+                "generator" = (Get-Item "function:Get-EtcdContext").ScriptBlock
+                "relation" = "etcd"
+                "mandatory" = $true
+            }
+        )
     }
     return $jujuCharmServices
 }
@@ -657,6 +667,41 @@ function Get-HGSContext {
         return @{}
     }
     return $ctxt
+}
+
+function Get-EtcdContext {
+    Write-JujuWarning "Generating context for etcd"
+    $required = @{
+        "client_ca" = $null
+        "client_cert" = $null
+        "client_key" = $null
+        "connection_string" = $null
+    }
+    $optionalCtx = @{
+        "version" = $null
+    }
+    $ctx = Get-JujuRelationContext -Relation 'etcd' -RequiredContext $required -OptionalContext $optionalCtx
+    if (!$ctx.Count) {
+        Write-JujuWarning "Missing required relation settings from Etcd. Peer not ready?"
+        return @{}
+    }
+    # Write etcd certs
+    $etcd_ca_file = Join-Path $NOVA_INSTALL_DIR "etc\etcd-ca.crt"
+    $etcd_cert_file = Join-Path $NOVA_INSTALL_DIR "etc\etcd-client.crt"
+    $etcd_key_file = Join-Path $NOVA_INSTALL_DIR "etc\etcd-client.key"
+    # Remove the current certificates (if any) and add the new ones
+    Remove-Item -Recurse -Force "$etcd_ca_file" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force "$etcd_cert_file" -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force "$etcd_key_file" -ErrorAction SilentlyContinue
+    # Write the new certificates
+    Set-Content $etcd_ca_file $ctx["client_ca"]
+    Set-Content $etcd_cert_file $ctx["client_cert"]
+    Set-Content $etcd_key_file $ctx["client_key"]
+    # Get first url from the connection string
+    $etcd_url = $ctx["connection_string"].Split(',')
+    # Set additional contexts
+    $ctx["backend_url"] = "etcd3+{0}?ca_cert={1}&cert_key={2}&cert_cert={3}" -f @($etcd_url[0], [uri]::EscapeUriString("$etcd_ca_file"), [uri]::EscapeUriString("$etcd_key_file"), [uri]::EscapeUriString("$etcd_cert_file"))
+    return $ctx
 }
 
 function Get-SystemContext {
