@@ -15,6 +15,8 @@
 Import-Module JujuLogging
 Import-Module Templating
 
+$DEFAULT_TEMPLATE_DIR = Join-Path (Get-JujuCharmDir) "templates"
+
 function Convert-FileToBase64{
     <#
     .SYNOPSIS
@@ -81,11 +83,14 @@ function ConvertTo-Base64 {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]$Content
+        [string]$Content,
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("ASCII", "Unicode")]
+        [string]$Encoding="Unicode"
     )
     PROCESS {
-        $x = [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($Content))
-        return $x
+        $enc = [System.Text.Encoding]::GetEncoding($Encoding)
+        return [System.Convert]::ToBase64String($enc.GetBytes($Content))
     }
 }
 
@@ -99,11 +104,15 @@ function ConvertFrom-Base64 {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]$Content
+        [string]$Content,
+        [Parameter(Mandatory=$false)]
+        [ValidateSet("ASCII", "Unicode")]
+        [string]$Encoding="Unicode"
     )
     PROCESS {
-        $x = [System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String($content))
-        return $x
+        $data = [System.Convert]::FromBase64String($content)
+        $enc = [System.Text.Encoding]::GetEncoding($Encoding)
+        return $enc.GetString($data)
     }
 }
 
@@ -558,12 +567,14 @@ function Get-PSStringParamsFromHashtable {
 function Start-RenderTemplate {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true)]
         [System.Collections.Generic.Dictionary[string, object]]$Context,
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true)]
         [string]$TemplateName,
-        [Parameter(Mandatory=$false, ValueFromPipeline=$true)]
-        [string]$OutFile
+        [Parameter(Mandatory=$false)]
+        [string]$OutFile,
+        [Parameter(Mandatory=$false)]
+        [string]$TemplateDir=$DEFAULT_TEMPLATE_DIR
     )
     PROCESS {
         $templatesDir = Join-Path $env:CHARM_DIR "templates"
@@ -571,7 +582,7 @@ function Start-RenderTemplate {
             $templatesDir = $env:CHARM_TEMPLATE_DIR
         }
         $template = Join-Path $templatesDir $TemplateName
-        $cfg = Invoke-RenderTemplateFromFile -Context $Context -Template $template
+        $cfg = Invoke-RenderTemplateFromFile -Context $Context -Template $template -TemplateDir $TemplateDir
         if($OutFile) {
             [System.IO.File]::WriteAllText($OutFile, $cfg)
         } else {

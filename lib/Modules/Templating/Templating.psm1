@@ -79,30 +79,60 @@ function Invoke-RenderTemplate {
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
         [hashtable]$Context,
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]$TemplateData
+        [DotLiquid.Template]$TemplateData
     )
     PROCESS {
         $norm = Convert-PSObjectToGenericObject $Context
-        $tpl = [DotLiquid.Template]::Parse($TemplateData)
         $hash = [DotLiquid.Hash]::FromDictionary($norm)
-        return  $tpl.Render($hash)
+        return $TemplateData.Render($hash)
     }
 }
 
 function Invoke-RenderTemplateFromFile {
     [CmdletBinding()]
     Param(
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
+        [Parameter(Mandatory=$true)]
         [hashtable]$Context,
-        [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [string]$Template
+        [Parameter(Mandatory=$true)]
+        [string]$Template,
+        [Parameter(Mandatory=$true)]
+        [string]$TemplateDir
     )
     PROCESS {
-        if(!(Test-Path $Template)) {
-            Throw "Template $Template was not found"
+        if (!(Test-Path $TemplateDir)) {
+            Throw "TemplateDir not found"
         }
-        $contents = [System.IO.File]::ReadAllText($Template)
-        return Invoke-RenderTemplate -Context $Context -TemplateData $contents
+        $TemplateDir = $TemplateDir.Replace("\", "/")
+        $Template = $Template.Replace("\", "/")
+
+        $td = [DotLiquid.FileSystems.LocalFileSystem](New-Object "DotLiquid.FileSystems.LocalFileSystem" $TemplateDir)
+        [DotLiquid.Template]::FileSystem = $td
+
+        $tplCtx = [DotLiquid.Context]::new([CultureInfo]::InvariantCulture)
+
+        $items = (Get-ChildItem -Recurse $TemplateDir | Where-Object {$_.Name -like "*.liquid"})
+        foreach ($tplItem in $items) {
+            $dir = $tplItem.DirectoryName.Replace("\", "/")
+            $name = $tplItem.Name.TrimStart("_").TrimEnd(".liquid")
+
+            if ($dir.TrimEnd("/") -eq $TemplateDir.TrimEnd("/")) {
+                # NOTE: DotLiquid does some regex matching which fails for templates
+                # in subfolders, unless the key is a double quoted string...
+                $asQuoted = '"{0}"' -f $name
+            } else {
+                $name = Join-Path $dir.TrimStart($td.Root).TrimStart("/").TrimStart("\") $name
+                $asQuoted = '"{0}"' -f $name
+            }
+            $tplCtx.Scopes[0][$asQuoted] = $name
+        }
+        $tplAsQuoted = '"{0}"' -f $Template
+        if (!$tplCtx.Scopes[0][$tplAsQuoted]) {
+            Throw "Template $Template not found in $TemplateDir"
+        }
+
+        $tplData = $td.ReadTemplateFile($tplCtx, $tplAsQuoted)
+        $parsedTpl = [DotLiquid.Template]::Parse($tplData)
+        return Invoke-RenderTemplate -Context $Context -TemplateData $parsedTpl
     }
 }
 

@@ -36,13 +36,12 @@ options:
       If you use this option, you may enable file integrity checking by specifying
       an md5sum at the end of the URL as follows:
         https://example.com/installer.msi#md5=<hash>
-  enable-cluster-driver:
-    type: boolean
-    default: True
-    description: |
-      Enables the Hyper-V compute driver for clustering. This requires at least two Hyper-V compute
-      joined to a cluster.
-      NOTE: Available only in releases >= Mitaka
+  # enable-cluster-driver:
+  #   type: boolean
+  #   default: True
+  #   description: |
+  #     Enables the Hyper-V compute driver for clustering. This requires at least two Hyper-V compute
+  #     joined to a cluster.
   enable-multipath-io:
     type: boolean
     default: False
@@ -164,4 +163,5 @@ options:
     description: |
       When True will format and initialize all existing raw devices.
       It will not touch the OS drive or drives that already have a partition table.
+
     

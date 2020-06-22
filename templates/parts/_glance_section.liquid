@@ -1,0 +1,7 @@
+{% if glance_api_server %}
+[glance]
+{% if ssl_ca_file -%}
+cafile = {{ ssl_ca_file }}
+{% endif -%}
+api_servers = {{ glance_api_server }}
+{% endif %}

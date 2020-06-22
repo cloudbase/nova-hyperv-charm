@@ -363,7 +363,7 @@ function Get-CharmServices {
     $neutronOVSAgentExe = Join-Path $pythonDir "Scripts\neutron-openvswitch-agent.exe"
     $jujuCharmServices = @{
         "nova" = @{
-            "template" = "$distro\nova.conf"
+            "template" = "$distro/nova_conf"
             "service" = $NOVA_COMPUTE_SERVICE_NAME
             "binpath" = "$novaExe"
             "serviceBinPath" = "`"$serviceWrapperNova`" nova-compute `"$novaExe`" --config-file `"$novaConf`""
@@ -404,11 +404,16 @@ function Get-CharmServices {
                     "generator" = (Get-Item "function:Get-S2DCSVContext").ScriptBlock
                     "relation" = "csv"
                     "mandatory" = $false
+                },
+                @{
+                    "generator" = (Get-Item "function:Get-EtcdContext").ScriptBlock
+                    "relation" = "etcd"
+                    "mandatory" = (Confirm-JujuRelationCreated -Relation 'csv')
                 }
             )
         }
         "neutron" = @{
-            "template" = "$distro\neutron_hyperv_agent.conf"
+            "template" = "$distro/neutron_hyperv_agent"
             "service" = $NEUTRON_HYPERV_AGENT_SERVICE_NAME
             "binpath" = "$neutronHypervAgentExe"
             "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-hyperv-agent `"$neutronHypervAgentExe`" --config-file `"$neutronHypervConf`""
@@ -433,7 +438,7 @@ function Get-CharmServices {
             )
         }
         "neutron-ovs" = @{
-            "template" = "$distro\neutron_ovs_agent.conf"
+            "template" = "$distro/neutron_ovs_agent"
             "service" = $NEUTRON_OVS_AGENT_SERVICE_NAME
             "binpath" = "$neutronOVSAgentExe"
             "serviceBinPath" = "`"$serviceWrapperNeutron`" neutron-openvswitch-agent `"$neutronOVSAgentExe`" --config-file `"$neutronOVSConf`""
@@ -462,15 +467,6 @@ function Get-CharmServices {
                 }
             )
         }
-    }
-    if($cfg['enable-cluster-driver']) {
-        $jujuCharmServices['nova']['context_generators'] += @(
-            @{
-                "generator" = (Get-Item "function:Get-EtcdContext").ScriptBlock
-                "relation" = "etcd"
-                "mandatory" = $true
-            }
-        )
     }
     return $jujuCharmServices
 }
@@ -587,24 +583,20 @@ function Get-S2DCSVContext {
         return @{}
     }
     $ctxt = @{}
-    $cfg = Get-JujuCharmConfig
-    if(!$cfg['enable-cluster-driver']) {
-        Write-JujuWarning "S2D CSV context is ready but cluster driver is disabled"
-        return $ctxt
-    }
+    # $cfg = Get-JujuCharmConfig
+    # if(!$cfg['enable-cluster-driver']) {
+    #     Write-JujuWarning "S2D CSV context is ready but cluster driver is disabled"
+    #     return $ctxt
+    # }
     $version = Get-OpenstackVersion
-    [string]$ctxt["instances_cluster_dir"] = Join-Path $volumePath "Instances"
-    $ctxt["compute_cluster_driver"] = $NOVA_PRODUCT[$version]['compute_cluster_driver']
+    [string]$ctxt["instances_dir"] = Join-Path $volumePath "Instances"
+    $ctxt["compute_driver"] = $NOVA_PRODUCT[$version]['compute_cluster_driver']
     # Catch any IO error from mkdir, on the count that being a clustered storage
     # another node might create the folder between the time we Test-Path and
     # the time we execute mkdir. Test again in case of IO exception.
-    try {
-        if (!(Test-Path $ctxt["instances_cluster_dir"])) {
-            New-Item -ItemType Directory $ctxt["instances_cluster_dir"] | Out-Null
-        }
-   } catch [System.IO.IOException] {
-        if (!(Test-Path $ctxt["instances_cluster_dir"])) {
-            Throw $_
+    Start-ExecuteWithRetry -ScriptBlock {
+        if (!(Test-Path $ctxt["instances_dir"])) {
+            New-Item -ItemType Directory $ctxt["instances_dir"] | Out-Null
         }
     }
     return $ctxt
@@ -627,6 +619,7 @@ function Get-CloudComputeContext {
     $optionalCtx = @{
         "neutron_url" = $null
         "quantum_url" = $null
+        "admin_domain_name" = $null
     }
     $ctx = Get-JujuRelationContext -Relation 'cloud-compute' -RequiredContext $required -OptionalContext $optionalCtx
     if (!$ctx.Count -or (!$ctx["neutron_url"] -and !$ctx["quantum_url"])) {
@@ -743,15 +736,14 @@ function Get-CharmConfigContext {
         }
     }
     if($ctxt['ssl_ca']) {
-        $ca_pem = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String($ctxt['ssl_ca']))
         $ca_file = Join-Path $NOVA_INSTALL_DIR "etc\ca.pem"
-        Set-Content $ca_file $ca_pem
+        Write-FileFromBase64 -Content $ctxt['ssl_ca'] -File $ca_file
         $ctxt['ssl_ca_file'] = $ca_file
     }
     return $ctxt
 }
 
-function FormatRawDisks {
+function Invoke-FormatRawDisks {
     $cfg = Get-JujuCharmConfig
     if ($cfg['format-raw-devices']) {
         Get-Disk | Where partitionstyle -eq 'raw' | `
@@ -863,7 +855,7 @@ function Invoke-InstallHook {
     }
     Start-TimeResync
     
-    FormatRawDisks
+    Invoke-FormatRawDisks
 
     $prereqReboot = Install-Prerequisites
     if ($prereqReboot) {

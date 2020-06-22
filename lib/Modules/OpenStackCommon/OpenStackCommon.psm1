@@ -57,6 +57,7 @@ $NOVA_DEFAULT_LOG_DIR = Join-Path $env:SystemDrive "OpenStack\Log"
 $NOVA_DEFAULT_LOCK_DIR = Join-Path $env:SystemDrive "OpenStack\Lock"
 $NOVA_DEFAULT_INSTANCES_DIR = Join-Path $env:SystemDrive "OpenStack\Instances"
 $NOVA_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\OpenStack\Nova"
+$NOVA_CONFIG_DIR = Join-Path $NOVA_INSTALL_DIR "etc"
 $NOVA_VALID_NETWORK_TYPES = @('hyperv', 'ovs')
 $NOVA_COMPUTE_SERVICE_NAME = "nova-compute"
 $NEUTRON_HYPERV_AGENT_SERVICE_NAME = "neutron-hyperv-agent"
@@ -70,6 +71,8 @@ $OVS_VSCTL = Join-Path $OVS_INSTALL_DIR "bin\ovs-vsctl.exe"
 $OVS_PRODUCT_NAME = 'Cloudbase Open vSwitch'
 $OVS_EXT_NAME = "Cloudbase Open vSwitch Extension"
 $OVS_DEFAULT_INSTALLER_URL = "https://cloudbase.it/downloads/openvswitch-hyperv-2.7.0-certified.msi#md5=9cd0aee3911c04b21c03457fdc455931"
+
+$OSLO_MESSAGING_CA_CRT = Join-Path $NOVA_CONFIG_DIR "rabbit-client-ca.pem"
 
 # Cinder constants
 $CINDER_PRODUCT = @{
@@ -382,6 +385,7 @@ function Get-RabbitMQContext {
         "vhost" = $null
         "username" = $null
         "ha_queues" = $null
+        "ssl_ca" = $null
     }
     $ctx = Get-JujuRelationContext -Relation "amqp" -RequiredContext $required -OptionalContext $optional
     $username, $vhost = Get-RabbitMQConfig
@@ -403,6 +407,14 @@ function Get-RabbitMQContext {
         $data["rabbit_ha_queues"] = "True"
     } else {
         $data["rabbit_ha_queues"] = "False"
+    }
+
+    if ($ctx["ssl_ca"]) {
+        if (!(Test-Path $NOVA_CONFIG_DIR)){
+            mkdir $NOVA_CONFIG_DIR
+        }
+        Write-FileFromBase64 -Content $ctx["ssl_ca"] -File $OSLO_MESSAGING_CA_CRT
+        $data["rabbit_ssl_ca"] = $OSLO_MESSAGING_CA_CRT
     }
     $data["rabbit_host"] = $ctx["hostname"]
     $data["rabbit_password"] = $ctx["password"]

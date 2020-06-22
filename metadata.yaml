@@ -32,6 +32,9 @@ provides:
     interface: local-monitors
     scope: container
 requires:
+  neutron-plugin:
+    interface: neutron-plugin
+    scope: container
   s2d:
     interface: s2d
   s2d-health-check:

@@ -18,17 +18,23 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 function Initialize-Assemblies {
     $libDir = Join-Path $here "lib"
     $assemblies = @{
-        "portable" = Join-Path $libDir "netcore50\DotLiquid.dll";
-        "released" = Join-Path $libDir "net35\DotLiquid.dll";
+        "net45" = Join-Path $libDir "net45";
+        "netstandard13" = Join-Path $libDir "netstandard1.3";
     }
 
     try {
         [DotLiquid.Template] | Out-Null
     } catch [System.Management.Automation.RuntimeException] {
         try {
-            return [Microsoft.PowerShell.CoreCLR.AssemblyExtensions]::LoadFrom($assemblies["portable"])
+            $mod = Join-Path $assemblies["net45"] "DotLiquid.dll"
+            $resources = Join-Path $assemblies["net45"] "it/DotLiquid.resources.dll"
+            [Reflection.Assembly]::LoadFrom($mod) | Out-Null
+            [Reflection.Assembly]::LoadFrom($resources) | Out-Null
         } catch [System.Management.Automation.RuntimeException] {
-            return [Reflection.Assembly]::LoadFrom($assemblies["released"])
+            $mod = Join-Path $assemblies["netstandard13"] "DotLiquid.dll"
+            $resources = Join-Path $assemblies["netstandard13"] "it/DotLiquid.resources.dll"
+            [Reflection.Assembly]::LoadFrom($mod) | Out-Null
+            [Reflection.Assembly]::LoadFrom($resources) | Out-Null
         }
     }
 }
