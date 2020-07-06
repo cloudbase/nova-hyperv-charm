@@ -1,0 +1,11 @@
+[oslo_reports]
+{% if reports_dir %}
+# The following directory and file should exist
+# by the time the service starts.
+log_dir = {{ reports_dir }}
+{% endif %}
+
+{% if reports_trigger %}
+# Writing to this file will trigger a dump.
+file_event_handler = {{ reports_trigger }}
+{% endif %}

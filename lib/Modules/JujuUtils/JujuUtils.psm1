@@ -14,8 +14,8 @@
 
 Import-Module JujuLogging
 Import-Module Templating
+Import-Module JujuHooks
 
-$DEFAULT_TEMPLATE_DIR = Join-Path (Get-JujuCharmDir) "templates"
 
 function Convert-FileToBase64{
     <#
@@ -574,15 +574,14 @@ function Start-RenderTemplate {
         [Parameter(Mandatory=$false)]
         [string]$OutFile,
         [Parameter(Mandatory=$false)]
-        [string]$TemplateDir=$DEFAULT_TEMPLATE_DIR
+        [string]$TemplateDir
     )
     PROCESS {
-        $templatesDir = Join-Path $env:CHARM_DIR "templates"
-        if($env:CHARM_TEMPLATE_DIR) {
-            $templatesDir = $env:CHARM_TEMPLATE_DIR
+        if([string]::IsNullOrEmpty($TemplateDir)){
+            $TemplateDir = Join-Path $env:CHARM_DIR "templates"
         }
-        $template = Join-Path $templatesDir $TemplateName
-        $cfg = Invoke-RenderTemplateFromFile -Context $Context -Template $template -TemplateDir $TemplateDir
+
+        $cfg = Invoke-RenderTemplateFromFile -Context $Context -Template $TemplateName -TemplateDir $TemplateDir
         if($OutFile) {
             [System.IO.File]::WriteAllText($OutFile, $cfg)
         } else {

@@ -62,6 +62,7 @@ FunctionsToExport = @(
     "Invoke-MySQLDBRelationJoinedHook",
     "Invoke-WSFCRelationJoinedHook",
     "Invoke-S2DRelationJoinedHook",
+    "Invoke-NeutronPluginRelationJoined",
     "Invoke-CSVRelationJoinedHook")
 
 # Cmdlets to export from this module

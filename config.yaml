@@ -36,12 +36,6 @@ options:
       If you use this option, you may enable file integrity checking by specifying
       an md5sum at the end of the URL as follows:
         https://example.com/installer.msi#md5=<hash>
-  # enable-cluster-driver:
-  #   type: boolean
-  #   default: True
-  #   description: |
-  #     Enables the Hyper-V compute driver for clustering. This requires at least two Hyper-V compute
-  #     joined to a cluster.
   enable-multipath-io:
     type: boolean
     default: False
@@ -63,21 +57,6 @@ options:
       Represents the size in gigabytes occupied by the CSV requested from the s2d-proxy charm on the Capacity tier.
       NOTE: Please, also look at the 'csv-performance-size' config option, above as these configuration options
       are used together.
-  ovs-installer-url:
-    type: string
-    description: |
-      Download URL of the OVS MSI installer.
-  os-data-network:
-    type: string
-    description: |
-      The IP address and netmask of the OpenStack Data network (e.g.: 192.168.0.0/24).
-      This network will be used for tenant network traffic in overlay networks.
-      NOTE: If ovs is selected as the network type, this option overrides
-      data-port. OVS on Windows requires that the os data network be set on a NIC.
-      That means that if an interface has an IP in the os-data-network
-      range, that interface will be added to the vmswitch. There is a caveat here.
-      If os-data-network is on a different interface then data-port, it might result
-      in the hyper-v compute nodes not being able to use VLAN network segregation.
   rabbit-user:
     type: string
     default: nova
@@ -86,23 +65,6 @@ options:
     type: string
     default: openstack
     description: Rabbitmq vhost.
-  data-port:
-    type: string
-    description: |
-      Ethernet interface to use for vmswitch. This can be a MAC address or an interface name.
-      This option is mandatory if more then one interface is present on the target system.
-      In cases where there is only one interface on the system, the vmswitch will be created using that
-      interface and OSManagement will be set to True, regardless of the vmswitch-management option.
-      Avoid using the management interface as a data interface where system has more then one NIC.
-  vmswitch-name:
-    type: string
-    description: |
-      Name of the Hyper-V virtual switch. Defaults to 'br100'.
-  vmswitch-management:
-    type: boolean
-    default: False
-    description: |
-      Allow management OS on this vm switch. If True, the switch will be set in DHCP mode.
   log-dir:
     type: string
     description: |
@@ -112,13 +74,6 @@ options:
     description: |
       Location in which to store VM disks.
       Defaults to '<system_drive_letter>:\OpenStack\Instances'.
-  network-type:
-    type: string
-    default: hyperv
-    description: |
-      Neutron agent to use. Valid options are:
-        * hyperv
-        * ovs
   max-concurrent-live-migrations:
     type: int
     default: 1

@@ -53,9 +53,10 @@ $NOVA_CHARM_PORTS = @{
     "udp" = @("5985", "5986", "3343", "445", "135", "139")
 }
 $NOVA_DEFAULT_SWITCH_NAME = "br100"
-$NOVA_DEFAULT_LOG_DIR = Join-Path $env:SystemDrive "OpenStack\Log"
-$NOVA_DEFAULT_LOCK_DIR = Join-Path $env:SystemDrive "OpenStack\Lock"
-$NOVA_DEFAULT_INSTANCES_DIR = Join-Path $env:SystemDrive "OpenStack\Instances"
+$OPENSTACK_VAR = Join-Path $env:SystemDrive "OpenStack"
+$NOVA_DEFAULT_LOG_DIR = Join-Path $OPENSTACK_VAR "Log"
+$NOVA_DEFAULT_LOCK_DIR = Join-Path $OPENSTACK_VAR "Lock"
+$NOVA_DEFAULT_INSTANCES_DIR = Join-Path $OPENSTACK_VAR "Instances"
 $NOVA_INSTALL_DIR = Join-Path ${env:ProgramFiles} "Cloudbase Solutions\OpenStack\Nova"
 $NOVA_CONFIG_DIR = Join-Path $NOVA_INSTALL_DIR "etc"
 $NOVA_VALID_NETWORK_TYPES = @('hyperv', 'ovs')

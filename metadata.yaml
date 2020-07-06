@@ -31,10 +31,10 @@ provides:
   local-monitors:
     interface: local-monitors
     scope: container
-requires:
   neutron-plugin:
     interface: neutron-plugin
     scope: container
+requires:
   s2d:
     interface: s2d
   s2d-health-check:
@@ -45,8 +45,6 @@ requires:
     interface: rabbitmq
   image-service:
     interface: glance
-  neutron-plugin-api:
-    interface: neutron-plugin-api
   ad-join:
     interface: ad-join
   failover-cluster:

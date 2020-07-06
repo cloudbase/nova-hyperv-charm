@@ -102,8 +102,6 @@ function Invoke-RenderTemplateFromFile {
         if (!(Test-Path $TemplateDir)) {
             Throw "TemplateDir not found"
         }
-        $TemplateDir = $TemplateDir.Replace("\", "/")
-        $Template = $Template.Replace("\", "/")
 
         $td = [DotLiquid.FileSystems.LocalFileSystem](New-Object "DotLiquid.FileSystems.LocalFileSystem" $TemplateDir)
         [DotLiquid.Template]::FileSystem = $td
@@ -112,19 +110,21 @@ function Invoke-RenderTemplateFromFile {
 
         $items = (Get-ChildItem -Recurse $TemplateDir | Where-Object {$_.Name -like "*.liquid"})
         foreach ($tplItem in $items) {
-            $dir = $tplItem.DirectoryName.Replace("\", "/")
+            $tplDir = $tplItem.DirectoryName
             $name = $tplItem.Name.TrimStart("_").TrimEnd(".liquid")
 
-            if ($dir.TrimEnd("/") -eq $TemplateDir.TrimEnd("/")) {
+            if ($tplDir.TrimEnd("/") -eq $TemplateDir.TrimEnd("/")) {
                 # NOTE: DotLiquid does some regex matching which fails for templates
                 # in subfolders, unless the key is a double quoted string...
                 $asQuoted = '"{0}"' -f $name
             } else {
-                $name = Join-Path $dir.TrimStart($td.Root).TrimStart("/").TrimStart("\") $name
+                $tplDir = $tplDir.Replace($td.Root, "").TrimStart("\")
+                $name = "$tplDir/$name"
                 $asQuoted = '"{0}"' -f $name
             }
             $tplCtx.Scopes[0][$asQuoted] = $name
         }
+
         $tplAsQuoted = '"{0}"' -f $Template
         if (!$tplCtx.Scopes[0][$tplAsQuoted]) {
             Throw "Template $Template not found in $TemplateDir"

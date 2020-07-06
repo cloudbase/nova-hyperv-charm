@@ -7,20 +7,17 @@ log_dir = {{ log_dir }}
 log_file = neutron-ovs-agent.log
 
 [AGENT]
-physical_network_vswitch_mappings = *:{{ vmswitch_name }}
-enable_metrics_collection = False
 tunnel_types = {{ tunnel_types }}
+l2_population = {{ l2_population }}
+prevent_arp_spoofing = {{ prevent_arp_spoofing }}
 
 [SECURITYGROUP]
-firewall_driver = openvswitch
-enable_security_group = True
+firewall_driver = {{ firewall_driver }}
+enable_security_group = {{ enable_security_group }}
 
 [ovs]
 enable_tunneling = True
 local_ip = {{ local_ip }}
-tenant_network_type = {{ tunnel_types }}
-tunnel_bridge = br-tun
-integration_bridge = br-int
 ovsdb_connection = tcp:127.0.0.1:6640
 of_interface = native
 ovsdb_interface = native
