@@ -1,0 +1,74 @@
+[DEFAULT]
+verbose = {{ verbose }}
+debug = {{ debug }}
+
+compute_driver = {{ compute_driver }}
+instances_path = {{ instances_dir }}
+
+transport_url = {{ transport_url }}
+
+use_cow_images = True
+flat_injected = True
+mkisofs_cmd = {{ install_dir }}\bin\mkisofs.exe
+allow_resize_to_same_host = True
+running_deleted_instance_poll_interval = 120
+resize_confirm_window = 5
+resume_guests_state_on_host_boot = True
+
+rpc_backend = rabbit
+rpc_response_timeout = 1800
+lock_path = {{ lock_dir }}
+log_dir = {{ log_dir }}
+log_file = nova-compute.log
+force_config_drive = {{ force_config_drive }}
+vif_plugging_is_fatal = False
+vif_plugging_timeout = 60
+block_device_allocate_retries=600
+my_ip = {{ my_ip }}
+max_concurrent_live_migrations = {{ max_concurrent_live_migrations }}
+
+{% include "parts/logging" %}
+
+{% if compute_driver == "compute_hyperv.cluster.driver.HyperVClusterDriver" -%}
+sync_power_state_interval = -1
+instance_usage_audit = True
+instance_usage_audit_period = hour
+notify_on_state_change = vm_and_task_state
+
+[workarounds]
+handle_virt_lifecycle_events = False
+{% endif -%}
+
+{% include "parts/section_placement" %}
+
+{% include "parts/section_neutron" %}
+
+{% include "parts/glance_section" %}
+
+{% include "parts/section_rabbitmq_oslo" %}
+
+{% include "parts/section_oslo_notifications" %}
+
+{% include "parts/coordination" %}
+
+{% include "parts/free_rdp_section" %}
+
+[cinder]
+cross_az_attach = {{ cross_az_attach }}
+
+[hyperv]
+{% if vmswitch_name %}
+vswitch_name = {{ vmswitch_name }}
+{% endif %}
+limit_cpu_features = {{ limit_cpu_features }}
+config_drive_inject_password = {{ config_drive_inject_password }}
+qemu_img_cmd = {{ install_dir }}\bin\qemu-img.exe
+config_drive_cdrom = {{ config_drive_cdrom }}
+dynamic_memory_ratio = 1
+enable_instance_metrics_collection = False
+max_failover_count = 20
+failover_period = 1
+auto_failback = True
+
+[os_win]
+cache_temporary_wmi_objects = False

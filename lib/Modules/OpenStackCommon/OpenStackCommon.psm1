@@ -21,28 +21,28 @@ Import-Module JujuHelper
 
 
 $DEFAULT_OPENSTACK_VERSION = 'train'
-$SUPPORTED_OPENSTACK_RELEASES = @('stein', 'train')
+$SUPPORTED_OPENSTACK_RELEASES = @('train', 'ussuri')
 $DEFAULT_JUJU_RESOURCE_CONTENT = "Cloudbase default Juju resource"
 
 # Nova constants
 $NOVA_PRODUCT = @{
     'beta_name' = 'OpenStack Hyper-V Compute Beta'
-    'stein' = @{
-        'name' = 'OpenStack Hyper-V Compute Stein'
-        'version' = '19.0.0'
-        'default_installer_urls' = @{
-            'msi' = 'http://cloudbase.it/downloads/HyperVNovaCompute_Stein_19_0_0.msi#md5='
-            'zip' = 'http://cloudbase.it/downloads/HyperVNovaCompute_Stein_19_0_0.msi#md5='
-        }
-        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
-        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
-    }
     'train' = @{
         'name' = 'OpenStack Hyper-V Compute Train'
         'version' = '20.0.0'
         'default_installer_urls' = @{
             'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Train_20_0_0.msi'
-            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Train_20_0_0.msi'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Train_20_0_0.zip'
+        }
+        'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
+        'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
+    }
+    'ussuri' = @{
+        'name' = 'OpenStack Hyper-V Compute Ussuri'
+        'version' = '21.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Ussuri_21_0_0_test.msi'
+            'zip' = 'https://cloudbase.it/downloads/HyperVNovaCompute_Ussuri_21_0_0_test.zip'
         }
         'compute_driver' = 'compute_hyperv.driver.HyperVDriver'
         'compute_cluster_driver' = 'compute_hyperv.cluster.driver.HyperVClusterDriver'
@@ -78,20 +78,20 @@ $OSLO_MESSAGING_CA_CRT = Join-Path $NOVA_CONFIG_DIR "rabbit-client-ca.pem"
 # Cinder constants
 $CINDER_PRODUCT = @{
     'beta_name' = 'OpenStack Cinder Volume Beta'
-    'stein' = @{
-        'name' = 'OpenStack Cinder Volume Stein'
-        'version' = '14.0.2'
-        'default_installer_urls' = @{
-            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Stein_14_0_2.msi'
-            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Stein_14_0_2.msi'
-        }
-    }
     'train' = @{
         'name' = 'OpenStack Cinder Volume Train'
         'version' = '15.0.0'
         'default_installer_urls' = @{
             'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Train_15_0_0.msi'
             'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Train_15_0_0.msi'
+        }
+    }
+    'ussuri' = @{
+        'name' = 'OpenStack Cinder Volume Ussuri'
+        'version' = '16.0.0'
+        'default_installer_urls' = @{
+            'msi' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ussuri_16_0_0_test.msi'
+            'zip' = 'https://cloudbase.it/downloads/CinderVolumeSetup_Ussuri_16_0_0_test.zip'
         }
     }
 

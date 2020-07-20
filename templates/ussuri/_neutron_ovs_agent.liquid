@@ -1,0 +1,26 @@
+[DEFAULT]
+verbose = {{ verbose }}
+debug = {{ debug }}
+control_exchange = neutron
+transport_url = {{ transport_url }}
+log_dir = {{ log_dir }}
+log_file = neutron-ovs-agent.log
+
+[AGENT]
+tunnel_types = {{ tunnel_types }}
+l2_population = {{ l2_population }}
+prevent_arp_spoofing = {{ prevent_arp_spoofing }}
+
+[SECURITYGROUP]
+firewall_driver = {{ firewall_driver }}
+enable_security_group = {{ enable_security_group }}
+
+[ovs]
+enable_tunneling = True
+local_ip = {{ local_ip }}
+ovsdb_connection = tcp:127.0.0.1:6640
+of_interface = native
+ovsdb_interface = native
+
+[os_win]
+cache_temporary_wmi_objects = False
