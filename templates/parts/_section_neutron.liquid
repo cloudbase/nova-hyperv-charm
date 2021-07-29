@@ -1,6 +1,6 @@
 [neutron]
-{% if ssl_ca_file -%}
-cafile = {{ ssl_ca_file }}
+{% if ssl_ca_cert -%}
+cafile = {{ ssl_ca_cert }}
 {% endif -%}
 url = {{ neutron_url }}
 auth_strategy = keystone

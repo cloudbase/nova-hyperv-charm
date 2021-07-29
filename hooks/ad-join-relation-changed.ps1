@@ -36,7 +36,7 @@ try {
         $adUserPassword = $adCtxt["adcredentials"][0]["password"]
 
         $serviceName = Get-NovaServiceName
-
+        Invoke-ConfigChangedHook
         Write-JujuWarning "Setting AD user for service '$serviceName'"
 
         Grant-PrivilegesOnDomainUser -Username $adUsername
@@ -48,7 +48,7 @@ try {
         Invoke-S2DRelationJoinedHook
         Invoke-CinderAccountsRelationJoinedHook
         Invoke-HGSRelationJoined
-        Invoke-ConfigChangedHook
+        Invoke-SMBShareRelationJoinedHook
     }
 } catch {
     Write-HookTracebackToLog $_

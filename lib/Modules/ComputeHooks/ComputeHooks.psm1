@@ -24,17 +24,32 @@ Import-Module ADCharmUtils
 Import-Module OpenStackCommon
 Import-Module WSFCCharmUtils
 
+$WINDOWS_GROUP_SIDS = @{
+    "Remote Desktop Users" = "S-1-5-32-555"
+    "Remote Management Users" = "S-1-5-32-580"
+    "Hyper-V Administrators" = "S-1-5-32-578"
+}
+$NOVA_CC_CA_CERT = Join-Path $NOVA_CONFIG_DIR "nova_cc_ca_cert.pem"
 
 function Install-Prerequisites {
     <#
     .SYNOPSIS
     Returns a boolean to indicate if a reboot is needed or not
     #>
-
     if (Get-IsNanoServer) {
         return $false
     }
     $rebootNeeded = $false
+    $cfg = Get-JujuCharmConfig
+    $extraFeatures = $cfg["extra-windows-features"]
+    if ($extraFeatures) {
+        $extraFeatures = $extraFeatures.Split()
+        $extraFeaturesNeedsReboot = Install-WindowsFeatures -Features $extraFeatures -SuppressReboot:$true
+        if ($extraFeaturesNeedsReboot) {
+            $rebootNeeded = $true
+        }
+    }
+
     try {
         $needsHyperV = Get-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Hyper-V'
     } catch {
@@ -45,16 +60,16 @@ function Install-Prerequisites {
         if ($installHyperV.RestartNeeded) {
             $rebootNeeded = $true
         }
-    } else {
-        if ($needsHyperV.RestartNeeded) {
-            $rebootNeeded = $true
-        }
     }
+
     $stat = Enable-WindowsOptionalFeature -Online -FeatureName 'Microsoft-Hyper-V-Management-PowerShell' -All -NoRestart
     if ($stat.RestartNeeded) {
         $rebootNeeded = $true
     }
-    Install-WindowsFeatures -Features @('RSAT-Hyper-V-Tools')
+    $featuresReboot = Install-WindowsFeatures -Features @('RSAT-Hyper-V-Tools') -SuppressReboot:$true
+    if ($featuresReboot) {
+        $rebootNeeded = $true
+    }
     if (Enable-MPIO) {
         $rebootNeeded = $true
     }
@@ -71,7 +86,7 @@ function Enable-MPIO {
         Write-JujuWarning "MPIO already enabled"
         $autoClaim = Get-MSDSMAutomaticClaimSettings
         if (!$autoclaim.iSCSI) {
-            Enable-MSDSMAutomaticClaim -BusType iSCSI -ErrorAction SilentlyContinue
+            Enable-MSDSMAutomaticClaim -BusType iSCSI -ErrorAction SilentlyContinue | Out-Null
         }
         return $false
     }
@@ -188,8 +203,13 @@ function Get-NovaServiceName {
 
 function Enable-LiveMigration {
     Enable-VMMigration
-    $name = Get-MainNetadapter
-    $netAddresses = Get-NetIPAddress -InterfaceAlias $name -AddressFamily IPv4
+    $bindingAddress = Get-NetworkPrimaryAddress -Binding "migration"
+    if (!$bindingAddress) {
+        # TODO(gsamfira): Shouls we error?
+        Write-JujuWarning "Failed to get binding IP address for migration network. Skipping live migration."
+        return
+    }
+    $netAddresses = Get-NetIPAddress -IPAddress $bindingAddress
     foreach($netAddress in $netAddresses) {
         $prefixLength = $netAddress.PrefixLength
         $netmask = ConvertTo-Mask -MaskLength $prefixLength
@@ -227,14 +247,11 @@ function Restart-Nova {
 function Get-CharmServices {
     $distro = Get-OpenstackVersion
     $novaConf = Join-Path $NOVA_INSTALL_DIR "etc\nova.conf"
-    $neutronHypervConf = Join-Path $NOVA_INSTALL_DIR "etc\neutron_hyperv_agent.conf"
-    $neutronOVSConf = Join-Path $NOVA_INSTALL_DIR "etc\neutron_ovs_agent.conf"
     $serviceWrapperNova = Get-ServiceWrapper -Service "Nova" -InstallDir $NOVA_INSTALL_DIR
-    $serviceWrapperNeutron = Get-ServiceWrapper -Service "Neutron" -InstallDir $NOVA_INSTALL_DIR
     $pythonDir = Get-PythonDir -InstallDir $NOVA_INSTALL_DIR
     $novaExe = Join-Path $pythonDir "Scripts\nova-compute.exe"
-    $neutronHypervAgentExe = Join-Path $pythonDir "Scripts\neutron-hyperv-agent.exe"
-    $neutronOVSAgentExe = Join-Path $pythonDir "Scripts\neutron-openvswitch-agent.exe"
+    $hasSMB = Confirm-JujuRelationCreated -Relation 'smb-share'
+    $hasETCd = Confirm-JujuRelationCreated -Relation 'etcd'
     $jujuCharmServices = @{
         "nova" = @{
             "template" = "$distro/nova_conf"
@@ -270,8 +287,8 @@ function Get-CharmServices {
                     "mandatory" = $true
                 },
                 @{
-                    "generator" = (Get-Item "function:Get-FreeRDPContext").ScriptBlock
-                    "relation" = "free-rdp"
+                    "generator" = (Get-Item "function:Get-WSGateContext").ScriptBlock
+                    "relation" = "wsgate"
                     "mandatory" = $false
                 },
                 @{
@@ -280,8 +297,8 @@ function Get-CharmServices {
                     "mandatory" = $false
                 },
                 @{
-                    "generator" = (Get-Item "function:Get-EtcdContext").ScriptBlock
-                    "relation" = "etcd"
+                    "generator" = (Get-Item "function:Get-CoordinationBackendContext").ScriptBlock
+                    "relation" = "etcd or smb-share"
                     "mandatory" = (Confirm-JujuRelationCreated -Relation 'csv')
                 },
                 @{
@@ -293,6 +310,41 @@ function Get-CharmServices {
         }
     }
     return $jujuCharmServices
+}
+
+function Get-CoordinationBackendContext {
+    $cfg = Get-JujuCharmConfig
+    $coordBackend = $cfg["coordination-backend"]
+    if($coordBackend) {
+        Write-JujuWarning "Coordination backend overwritten in config. Skipping etcd context"
+        return @{
+            "coordination_backend_url" = $coordBackend
+        }
+    }
+
+    $ctx = Get-SMBShareContext
+    if (!$ctx.Count) {
+        $ctx = Get-EtcdContext
+        if (!$ctx.Count) {
+            return @{}
+        }
+    }
+    return $ctx
+}
+
+function Get-SMBShareContext {
+    $requiredCtxt = @{
+        "share" = $null
+    }
+    $ctxt = Get-JujuRelationContext -Relation "smb-share" -RequiredContext $requiredCtxt
+    if(!$ctxt.Count) {
+        Write-JujuWarning "smb-share context not ready"
+        return @{}
+    }
+    $ret = @{
+        "coordination_backend_url" = ("file://{0}" -f $ctxt["share"])
+    }
+    return $ret
 }
 
 function Get-NeutronPluginContext{
@@ -309,22 +361,40 @@ function Get-NeutronPluginContext{
     return $ctx
 }
 
-function Get-FreeRDPContext {
+function Get-WSGateContext {
     Write-JujuWarning "Getting context from FreeRDP"
+    $adCtx = Get-ActiveDirectoryContext
+    if (!$adCtx.Count) {
+        Write-JujuWarning "Get-WSGateContext: Not yet part of AD. Defering for later."
+        return @{}
+    }
+
     $required = @{
         "enabled" = $null
         "html5_proxy_base_url" = $null
+        "allow_user" = $null
     }
     $ctx = Get-JujuRelationContext -Relation "free-rdp" -RequiredContext $required
     if (!$ctx.Count) {
         return @{}
     }
-    return $ctx
+    $ret = @{}
+    foreach($item in $ctx.Keys){
+        $ret[$item] = ConvertFrom-Yaml $ctx[$item]
+    }
+    if ($ret["allow_user"]["netbios_domain"]) {
+        $grpSID = $WINDOWS_GROUP_SIDS["Hyper-V Administrators"]
+        $netbiosUser = "{0}\{1}" -f (
+            $ret["allow_user"]["netbios_domain"], $ret["allow_user"]["username"])
+        Add-UserToLocalGroup -Username $netbiosUser -GroupSID $grpSID
+    }
+    return $ret
 }
 
 function Get-S2DVolumeName {
-    $volumeName = (Get-JujuLocalUnit) -replace '/', '-'
-    return $volumeName
+    return "s2d-volume"
+    # $volumeName = (Get-JujuLocalUnit) -replace '/', '-'
+    # return $volumeName
 }
 
 function Confirm-RunningClusterService {
@@ -421,13 +491,12 @@ function Get-S2DCSVContext {
         return @{}
     }
     $ctxt = @{}
-    # $cfg = Get-JujuCharmConfig
-    # if(!$cfg['enable-cluster-driver']) {
-    #     Write-JujuWarning "S2D CSV context is ready but cluster driver is disabled"
-    #     return $ctxt
-    # }
+    $computername = [System.Net.Dns]::GetHostName()
+    $computeStorage = Join-Path $volumePath "ComputeStorage"
+    $thisNode = Join-Path $computeStorage $computername
+
     $version = Get-OpenstackVersion
-    [string]$ctxt["instances_dir"] = Join-Path $volumePath "Instances"
+    [string]$ctxt["instances_dir"] = Join-Path $thisNode "Instances"
     $ctxt["compute_driver"] = $NOVA_PRODUCT[$version]['compute_cluster_driver']
     # Catch any IO error from mkdir, on the count that being a clustered storage
     # another node might create the folder between the time we Test-Path and
@@ -458,6 +527,7 @@ function Get-CloudComputeContext {
         "neutron_url" = $null
         "quantum_url" = $null
         "admin_domain_name" = $null
+        "ca_cert" = $null
     }
     $ctx = Get-JujuRelationContext -Relation 'cloud-compute' -RequiredContext $required -OptionalContext $optionalCtx
     if (!$ctx.Count -or (!$ctx["neutron_url"] -and !$ctx["quantum_url"])) {
@@ -466,6 +536,12 @@ function Get-CloudComputeContext {
     }
     if (!$ctx["neutron_url"]) {
         $ctx["neutron_url"] = $ctx["quantum_url"]
+    }
+
+    if ($ctx["ca_cert"]) {
+        Write-FileFromBase64 -File $NOVA_CC_CA_CERT -Content $ctx["ca_cert"]
+        $ctx["ssl_ca_cert"] = $NOVA_CC_CA_CERT
+
     }
     $ctx["auth_strategy"] = "keystone"
     $ctx["admin_auth_uri"] = "{0}://{1}:{2}" -f @($ctx["service_protocol"], $ctx['auth_host'], $ctx['service_port'])
@@ -486,8 +562,15 @@ function Get-HGSContext {
     return $ctxt
 }
 
+function Get-ServiceWrapperConfigContext {
+    return @{
+        "install_dir" = $NOVA_INSTALL_DIR
+    }
+}
+
 function Get-EtcdContext {
     Write-JujuWarning "Generating context for etcd"
+
     $required = @{
         "client_ca" = $null
         "client_cert" = $null
@@ -517,7 +600,7 @@ function Get-EtcdContext {
     # Get first url from the connection string
     $etcd_url = $ctx["connection_string"].Split(',')
     # Set additional contexts
-    $ctx["backend_url"] = "etcd3+{0}?ca_cert={1}&cert_key={2}&cert_cert={3}" -f @($etcd_url[0], [uri]::EscapeUriString("$etcd_ca_file"), [uri]::EscapeUriString("$etcd_key_file"), [uri]::EscapeUriString("$etcd_cert_file"))
+    $ctx["coordination_backend_url"] = "etcd3+{0}?ca_cert={1}&cert_key={2}&cert_cert={3}" -f @($etcd_url[0], [uri]::EscapeUriString("$etcd_ca_file"), [uri]::EscapeUriString("$etcd_key_file"), [uri]::EscapeUriString("$etcd_cert_file"))
     return $ctx
 }
 
@@ -556,7 +639,7 @@ function Get-CharmConfigContext {
     $ctxt['reports_dir'] = Join-Path $ctxt['reports_base_dir'] "files"
     $ctxt['reports_trigger'] = Join-Path $ctxt['reports_base_dir'] "trigger"
 
-    foreach($dir in @($ctxt['log_dir'], $ctxt['instances_dir'], $ctxt['reports_dir'])) {
+    foreach($dir in @($ctxt['log_dir'], $ctxt['instances_dir'], $ctxt['reports_dir'], $ctxt['reports_trigger'])) {
         if (!(Test-Path $dir)) {
             New-Item -ItemType Directory -Path $dir
         }
@@ -566,6 +649,7 @@ function Get-CharmConfigContext {
         Write-FileFromBase64 -Content $ctxt['ssl_ca'] -File $ca_file
         $ctxt['ssl_ca_file'] = $ca_file
     }
+    $coordBackend = $ctxt["coordination_backend"]
     return $ctxt
 }
 
@@ -693,6 +777,7 @@ function Invoke-InstallHook {
 
     $prereqReboot = Install-Prerequisites
     if ($prereqReboot) {
+        Write-JujuWarning "Install-Prerequisites: Reboot required"
         Invoke-JujuReboot -Now
     }
     Set-HyperVUniqueMACAddressesPool
@@ -712,9 +797,24 @@ function Invoke-StopHook {
     }
 }
 
+function Start-RenderServiceWrapperConfig {
+    $svcWrapCtx = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
+    $releaseCtx = [System.Collections.Generic.Dictionary[string, object]](New-Object "System.Collections.Generic.Dictionary[string, object]")
+    $svcWrapCtx["install_dir"] = $NOVA_INSTALL_DIR
+    $distro = Get-OpenstackVersion
+
+    Start-RenderTemplate -Context $svcWrapCtx `
+        -TemplateName "$distro/nova_service_wrapper" `
+        -OutFile (Join-Path $NOVA_INSTALL_DIR "etc\nova_service_wrapper.conf")
+    Start-RenderTemplate -Context $releaseCtx `
+        -TemplateName "$distro/release" `
+        -OutFile (Join-Path $NOVA_INSTALL_DIR "etc\release")
+}
+
 function Invoke-ConfigChangedHook {
     $mpioReboot = Enable-MPIO
     if ($mpioReboot) {
+        Write-JujuWarning "Enable-MPIO: Reboot required"
         Invoke-JujuReboot -Now
     }
     Start-UpgradeOpenStackVersion
@@ -722,7 +822,7 @@ function Invoke-ConfigChangedHook {
     Enable-MSiSCSI
     # Start-ConfigureNeutronAgent
     $adCtxt = Get-ActiveDirectoryContext
-    if(($adCtxt -ne $null) -and ($adCtxt.Count -gt 1) -and (Confirm-IsInDomain $adCtxt['domainName'])) {
+    if(($null -ne $adCtxt) -and ($adCtxt.Count -gt 1) -and (Confirm-IsInDomain $adCtxt['domainName'])) {
         Enable-LiveMigration
         $cfg = Get-JujuCharmConfig
         Set-VMHost -MaximumVirtualMachineMigrations $cfg['max-concurrent-live-migrations'] `
@@ -734,6 +834,9 @@ function Invoke-ConfigChangedHook {
     $novaIncompleteRelations = New-ConfigFile -ContextGenerators $services['nova']['context_generators'] `
                                               -Template $services['nova']['template'] `
                                               -OutFile $services['nova']['config']
+
+    Start-RenderServiceWrapperConfig
+
     if(!$novaIncompleteRelations.Count) {
         Write-JujuWarning "Restarting service Nova"
         Restart-Nova
@@ -893,11 +996,17 @@ function Invoke-WSFCRelationJoinedHook {
         Set-ClusterableStatus -Ready $false -Relation "failover-cluster"
         return
     }
-    if (Get-IsNanoServer) {
-        $features = @('FailoverCluster-NanoServer')
-    } else {
-        $features = @('Failover-Clustering', 'File-Services')
+
+    $hasRelation = Confirm-JujuRelationCreated -Relation "failover-cluster"
+    if (!$hasRelation) {
+        # This function was invoked from a hook triggered by another relation
+        # That's to be expected if the failover-cluster was created before the
+        # AD relation, and we need to re-run the hook after the AD relation is complete.
+        return
     }
+
+    $features = @('Failover-Clustering', 'File-Services')
+
     Install-WindowsFeatures -Features $features
     Set-ClusterableStatus -Ready $true -Relation "failover-cluster"
 }
@@ -951,3 +1060,35 @@ function Invoke-CSVRelationJoinedHook {
         Set-JujuRelation -RelationId $rid -Settings $relationSettings
     }
 }
+
+function Invoke-SMBShareRelationJoinedHook {
+    $adCtxt = Get-ActiveDirectoryContext
+    if (!$adCtxt.Count) {
+        Write-JujuWarning "Delaying the S2D relation joined hook until AD context is ready"
+        return
+    }
+
+    $cfg = Get-ConfigContext
+    if($cfg.Count -eq 0) {
+        Write-JujuWarning "config context not yet ready"
+        return
+    }
+    $adGroup = "{0}\{1}" -f @($adCtxt['netbiosname'], $cfg['ad_computer_group'])
+    $adUser = $adCtxt['adcredentials'][0]["username"]
+
+    $accounts = @(
+        $adGroup,
+        $adUser
+    )
+
+    $marshalledAccounts = Get-MarshaledObject -Object $accounts
+    $settings = @{
+        "share-name" = $cfg["share_name"]
+        "accounts" = $marshalledAccounts
+    }
+    $rids = Get-JujuRelationIds -Relation "smb-share"
+    foreach ($rid in $rids) {
+        Set-JujuRelation -RelationId $rid -Settings $settings
+    }
+}
+

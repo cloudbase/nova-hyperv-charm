@@ -170,6 +170,7 @@ function Get-ServiceWrapper {
 
     $wrapperName = ("OpenStackService{0}.exe" -f $Service)
     $svcPath = Join-Path $InstallDir ("bin\{0}" -f $wrapperName)
+    Write-JujuWarning ("Searching for {0}" -f $svcPath)
     if (!(Test-Path $svcPath)) {
         $svcPath = Join-Path $InstallDir "bin\OpenStackService.exe"
         if (!(Test-Path $svcPath)) {

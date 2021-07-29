@@ -132,7 +132,8 @@ function Invoke-RenderTemplateFromFile {
 
         $tplData = $td.ReadTemplateFile($tplCtx, $tplAsQuoted)
         $parsedTpl = [DotLiquid.Template]::Parse($tplData)
-        return Invoke-RenderTemplate -Context $Context -TemplateData $parsedTpl
+        $data = Invoke-RenderTemplate -Context $Context -TemplateData $parsedTpl
+        return $data
     }
 }
 

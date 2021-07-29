@@ -1,0 +1,3 @@
+service-name=nova-compute
+service-command="{{ install_dir }}\Python\Scripts\nova-compute.exe" --config-file "{{ install_dir }}\etc\nova.conf"
+exec-start-pre=powershell -c "&'{{ install_dir }}\etc\ovs_cleanup_wrapper.ps1'" '"{{ install_dir }}\Python\Scripts\neutron-ovs-cleanup.exe"'

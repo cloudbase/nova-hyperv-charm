@@ -118,5 +118,22 @@ options:
     description: |
       When True will format and initialize all existing raw devices.
       It will not touch the OS drive or drives that already have a partition table.
-
-    
+  extra-windows-features:
+    type: string
+    default: !!null ""
+    description: |
+      Extra Windows features to install. These features will be installed in the install
+      hook. This option is useful, if you want to limit the number of reboots that the server
+      needs to make in order for all features to be installed.
+  coordination-backend:
+    type: string
+    default: !!null ""
+    description: |
+      Coordination backend. Set a file share or etcd backend_url here to overwrite any backend URL
+      received through a relation.
+  share-name:
+    type: string
+    default: nova-coordination
+    description: |
+      The share name to request on the fileserver relation. This share will be used as a coordination
+      backend.

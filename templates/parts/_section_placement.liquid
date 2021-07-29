@@ -1,6 +1,6 @@
 [placement]
-{% if ssl_ca_file -%}
-cafile = {{ ssl_ca_file }}
+{% if ssl_ca_cert -%}
+cafile = {{ ssl_ca_cert }}
 {% endif -%}
 auth_url = {{ auth_protocol }}://{{ auth_host }}:{{ auth_port }}
 auth_strategy = keystone

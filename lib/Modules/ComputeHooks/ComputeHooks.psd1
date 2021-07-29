@@ -63,6 +63,7 @@ FunctionsToExport = @(
     "Invoke-WSFCRelationJoinedHook",
     "Invoke-S2DRelationJoinedHook",
     "Invoke-NeutronPluginRelationJoined",
+    "Invoke-SMBShareRelationJoinedHook",
     "Invoke-CSVRelationJoinedHook")
 
 # Cmdlets to export from this module

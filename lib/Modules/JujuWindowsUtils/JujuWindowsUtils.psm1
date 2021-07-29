@@ -362,7 +362,9 @@ function Install-WindowsFeatures {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [array]$Features
+        [array]$Features,
+        [Parameter(Mandatory=$false)]
+        [switch]$SuppressReboot=$false
     )
     PROCESS {
         if(Get-IsNanoServer) {
@@ -371,16 +373,22 @@ function Install-WindowsFeatures {
         }
         $rebootNeeded = $false
         foreach ($feature in $Features) {
+            Write-JujuInfo "Installing feature $feature"
             $state = Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop
             if ($state.Success -ne $true) {
                 Throw "Install failed for feature $feature"
             }
             if ($state.RestartNeeded -eq 'Yes') {
+                Write-JujuWarning "Restart needed after feature install"
                 $rebootNeeded = $true
             }
         }
-        if ($rebootNeeded) {
-            Invoke-JujuReboot -Now
+        if ($rebootNeeded){
+            if ($SuppressReboot) {
+                return $true
+            } else {
+                Invoke-JujuReboot -Now
+            }
         }
     }
 }
@@ -395,23 +403,31 @@ function Enable-OptionalWindowsFeatures {
     [CmdletBinding()]
     Param(
         [Parameter(Mandatory=$true, ValueFromPipeline=$true)]
-        [array]$Features
+        [array]$Features,
+        [Parameter(Mandatory=$false)]
+        [switch]$SuppressReboot=$false
     )
     PROCESS {
         $rebootNeeded = $false
         foreach ($feature in $Features) {
             $state = Get-WindowsOptionalFeature -Online -FeatureName $feature
             if ($state.State -ne "Enabled") {
+                Write-JujuInfo "Enabling optional windows feature $feature"
                 $state = Enable-WindowsOptionalFeature -Online -FeatureName $feature -All -NoRestart
                 if ($state.RestartNeeded) {
+                    Write-JujuWarning "Restart needed after optional feature install"
                     $rebootNeeded = $true
                 }
             } elseif ($state.RestartNeeded) {
                 $rebootNeeded = $true
             }
         }
-        if ($rebootNeeded) {
-            Invoke-JujuReboot -Now
+        if ($rebootNeeded){
+            if ($SuppressReboot) {
+                return $true
+            } else {
+                Invoke-JujuReboot -Now
+            }
         }
     }
 }

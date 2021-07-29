@@ -17,7 +17,7 @@ resume_guests_state_on_host_boot = True
 
 rpc_backend = rabbit
 rpc_response_timeout = 1800
-lock_path = {{ lock_dir }}
+
 log_dir = {{ log_dir }}
 log_file = nova-compute.log
 force_config_drive = {{ force_config_drive }}
@@ -33,7 +33,6 @@ max_concurrent_live_migrations = {{ max_concurrent_live_migrations }}
 sync_power_state_interval = -1
 instance_usage_audit = True
 instance_usage_audit_period = hour
-notify_on_state_change = vm_and_task_state
 
 [workarounds]
 handle_virt_lifecycle_events = False
@@ -55,6 +54,9 @@ handle_virt_lifecycle_events = False
 
 [cinder]
 cross_az_attach = {{ cross_az_attach }}
+{% if ssl_ca_cert -%}
+cafile = {{ ssl_ca_cert }}
+{% endif -%}
 
 [hyperv]
 {% if vmswitch_name %}
@@ -72,3 +74,9 @@ auto_failback = True
 
 [os_win]
 cache_temporary_wmi_objects = False
+
+[oslo_concurrency]
+lock_path = {{ lock_dir }}
+
+[notifications]
+notify_on_state_change = vm_and_task_state

@@ -52,6 +52,11 @@ requires:
   hgs:
     interface: hgs
   free-rdp:
-    interface: free-rdp
+    interface: wsgate
   etcd:
     interface: etcd
+  smb-share:
+    interface: fileserver
+extra-bindings:
+  migration: !!null ""
+

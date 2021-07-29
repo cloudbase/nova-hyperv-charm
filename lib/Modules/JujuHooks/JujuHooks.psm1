@@ -90,6 +90,18 @@ function Confirm-ContextComplete {
     }
 }
 
+function Get-NetworkPrimaryAddress {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$true)]
+        [string]$Binding
+    )
+
+    $cmd = @("network-get", "--bind-address", $Binding)
+    $return = Invoke-JujuCommand -Command $cmd
+    return (ConvertFrom-Yaml $return)
+}
+
 function Get-JujuCharmDir {
     <#
     .SYNOPSIS

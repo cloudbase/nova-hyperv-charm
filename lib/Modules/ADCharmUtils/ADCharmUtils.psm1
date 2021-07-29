@@ -164,6 +164,7 @@ function Invoke-DJoin {
     Write-FileFromBase64 -File $blobFile -Content $DJoinBlob
     $cmd = @("djoin.exe", "/requestODJ", "/loadfile", $blobFile, "/windowspath", $env:SystemRoot, "/localos")
     Invoke-JujuCommand -Command $cmd
+    Write-JujuWarning "Reboting after domain join"
     Invoke-JujuReboot -Now
 }
 
@@ -180,6 +181,7 @@ function Get-DomainJoinPendingReboot {
 function Start-JoinDomain {
     $pendingReboot = Get-DomainJoinPendingReboot
     if($pendingReboot) {
+        Write-JujuWarning "There is a pending reboot. Rebooting now."
         Invoke-JujuReboot -Now
     }
     $adCtxt = Get-ActiveDirectoryContext

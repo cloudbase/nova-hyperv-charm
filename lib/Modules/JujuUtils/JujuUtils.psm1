@@ -68,8 +68,8 @@ function Write-FileFromBase64 {
         [string]$Content
     )
     PROCESS {
-        $bytes = [Convert]::FromBase64String($Content)
-        [System.IO.File]::WriteAllBytes($File, $bytes)
+        $data = [System.Convert]::FromBase64String($content)
+        [System.IO.File]::WriteAllBytes($File, $data)
     }
 }
 

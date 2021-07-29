@@ -91,6 +91,7 @@ FunctionsToExport = @(
     "Get-JujuVersion",
     "Get-JujuResource",
     "Set-JujuStatus",
+    "Get-NetworkPrimaryAddress",
     "Get-JujuStatus",
     "Get-JujuAction",
     "Set-JujuAction",
